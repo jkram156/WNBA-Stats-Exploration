@@ -1,0 +1,10 @@
+[
+  {
+    "shortName": "TOR @ IND",
+    "homeImpliedProbability": 0.75,
+    "awayImpliedProbability": 0.25,
+    "homeSpread": -6.5,
+    "book": "manual example",
+    "note": "Replace with current no-vig market probabilities before using."
+  }
+]

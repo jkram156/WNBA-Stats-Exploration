@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WNBA Model Development Explainer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d252c;
+      --muted: #596873;
+      --line: #d7e0e6;
+      --panel: #f7f9fb;
+      --wash: #eaf3f4;
+      --accent: #0b6b75;
+      --blue: #284f9f;
+      --blue-bg: #eef4ff;
+      --green: #0f7b4f;
+      --amber: #996b00;
+      --red: #9d2f3d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      background: #ffffff;
+      line-height: 1.5;
+    }
+
+    header, main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 34px 0 12px;
+      font-size: 22px;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    p {
+      margin: 7px 0;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 9px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel);
+      color: #32414a;
+      font-weight: 700;
+    }
+
+    code {
+      background: #eef2f5;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.95em;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .metric {
+      font-size: 25px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .callout {
+      background: var(--blue-bg);
+      border: 1px solid #bfd2ff;
+      border-left: 5px solid var(--blue);
+      border-radius: 8px;
+      padding: 13px 15px;
+      margin: 16px 0;
+      color: #203d7a;
+    }
+
+    .note {
+      background: #fff8e6;
+      border-left: 5px solid #c28a00;
+      border-radius: 8px;
+      padding: 13px 15px;
+      margin: 16px 0;
+      color: #4f3b00;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #ffffff;
+    }
+
+    .step strong {
+      color: var(--accent);
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin: 2px 3px 2px 0;
+      background: var(--wash);
+      color: var(--accent);
+    }
+
+    .keep { color: var(--green); font-weight: 700; }
+    .watch { color: var(--amber); font-weight: 700; }
+    .drop { color: var(--red); font-weight: 700; }
+    .term {
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    @media (max-width: 820px) {
+      header, main { padding: 16px; }
+      .cards, .grid2 { grid-template-columns: 1fr; }
+      table { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WNBA Win/Loss Model Explainer</h1>
+    <p>How the local WNBA prediction model got to its current form, what it uses, what was tested, and what its current limits are.</p>
+    <div class="cards">
+      <div class="card"><div class="label">Current Model</div><div class="metric">raw n=20</div></div>
+      <div class="card"><div class="label">Feature Family</div><div class="metric">strength core</div></div>
+      <div class="card"><div class="label">Backtest Log Loss</div><div class="metric">0.6232</div></div>
+      <div class="card"><div class="label">Random 50/50</div><div class="metric">0.6931</div></div>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>The Short Version</h2>
+      <div class="callout">
+        The current model asks a simple question: over each team's recent regular-season games, which team has looked stronger by scoring margin, points scored, points allowed, and win rate? It then uses logistic regression to turn those recent-strength signals into a win probability.
+      </div>
+      <p>The current regular-season baseline is <code>raw_n20_strength_core</code>. It uses the prior 20 games for each team when available. It is intentionally simpler than some of the candidates we tested because the simpler strength-core model held up better after cleaning the game universe.</p>
+    </section>
+
+    <section>
+      <h2>How We Got Here</h2>
+      <div class="timeline">
+        <div class="step">
+          <strong>1. Built the local data foundation.</strong>
+          <p>We created a resyncable SQLite database from the local <code>wehoop-wnba-raw</code> mirror. The extracted tables that matter most for modeling are <code>games</code>, <code>game_competitors</code>, <code>game_team_box_stats</code>, and <code>teams</code>.</p>
+        </div>
+        <div class="step">
+          <strong>2. Created a leakage-safe rolling evaluator.</strong>
+          <p>Each completed game becomes two team-game rows, one for each team. A row's features are built only from games played before that game. That keeps the backtest honest because the model never sees the result of the game it is trying to predict.</p>
+        </div>
+        <div class="step">
+          <strong>3. Tested rolling windows.</strong>
+          <p>We compared 3, 5, 8, 10, 12, 14, 16, and 20-game windows. Very short windows were too noisy. The useful range clustered around 10 to 20 games, with 20 games becoming the best simple regular-season baseline.</p>
+        </div>
+        <div class="step">
+          <strong>4. Added context and richer box-score families.</strong>
+          <p>We tested home/rest context, shooting, rebounding, turnovers, assists/steals/blocks, matchup edges, and opponent-adjusted form. Some of these helped in slices, but the broader feature sets did not clearly beat the simpler strength core after the game universe was cleaned.</p>
+        </div>
+        <div class="step">
+          <strong>5. Cleaned the game universe.</strong>
+          <p>The evaluator now treats regular-season prediction as regular-season WNBA franchise games only. We exclude postseason games and special-event/non-franchise team ids such as USA, WNBA All-Stars, and other exhibition-style rows.</p>
+        </div>
+        <div class="step">
+          <strong>6. Settled on the current baseline.</strong>
+          <p>After the cleanup, <code>raw_n20_strength_core</code> moved back into the practical lead: log loss 0.6232, Brier 0.2167, accuracy 0.6619, and AUC 0.7115 on the canonical regular-season evaluation.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What The Current Model Uses</h2>
+      <p>The prediction script uses the following current feature set. For an upcoming game, it builds the home team's recent averages, the away team's recent averages, and the home-minus-away difference.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Raw Stat</th>
+            <th>Meaning</th>
+            <th>Features Created</th>
+            <th>Why It Matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>scoreFor</code></td>
+            <td>Average points scored in the recent window.</td>
+            <td><code>home_scoreFor_avg</code>, <code>away_scoreFor_avg</code>, <code>scoreFor_diff</code></td>
+            <td>Captures recent offensive production.</td>
+          </tr>
+          <tr>
+            <td><code>scoreAgainst</code></td>
+            <td>Average points allowed in the recent window.</td>
+            <td><code>home_scoreAgainst_avg</code>, <code>away_scoreAgainst_avg</code>, <code>scoreAgainst_diff</code></td>
+            <td>Captures recent defensive performance, indirectly.</td>
+          </tr>
+          <tr>
+            <td><code>margin</code></td>
+            <td>Average scoring margin, calculated as points for minus points against.</td>
+            <td><code>home_margin_avg</code>, <code>away_margin_avg</code>, <code>margin_diff</code></td>
+            <td>The strongest and most stable signal. Teams that win by more tend to be stronger than teams that only narrowly win or often lose.</td>
+          </tr>
+          <tr>
+            <td><code>winPct</code></td>
+            <td>Recent winning percentage in the rolling window.</td>
+            <td><code>home_winPct_avg</code>, <code>away_winPct_avg</code>, <code>winPct_diff</code></td>
+            <td>Captures recent results directly, though it can be less informative than margin because it ignores how close games were.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        In total, the current prediction model uses 12 numeric inputs: 4 stats x 3 versions of each stat. The three versions are home team average, away team average, and the difference.
+      </div>
+    </section>
+
+    <section>
+      <h2>What We Tested But Do Not Currently Use</h2>
+      <div class="grid2">
+        <div class="card">
+          <h3>Context Features</h3>
+          <p><span class="tag">home court</span><span class="tag">rest days</span><span class="tag">back-to-back</span><span class="tag">recent home rate</span></p>
+          <p>These were useful in some contexts, especially postseason experiments, but did not beat the current regular-season baseline globally.</p>
+        </div>
+        <div class="card">
+          <h3>Box-Score Families</h3>
+          <p><span class="tag">FG%</span><span class="tag">3P%</span><span class="tag">FT%</span><span class="tag">assists</span><span class="tag">steals</span><span class="tag">blocks</span></p>
+          <p>Shooting and creation/defense had some standalone signal. Once margin and points were already present, they did not improve the main baseline enough to keep.</p>
+        </div>
+        <div class="card">
+          <h3>Possession Features</h3>
+          <p><span class="tag">turnovers</span><span class="tag">offensive rebounds</span><span class="tag">defensive rebounds</span><span class="tag">total rebounds</span></p>
+          <p>Rebounding was especially suspicious in the adjusted no-context model, where dropping it improved results. Turnovers were not clearly additive for the current baseline.</p>
+        </div>
+        <div class="card">
+          <h3>Opponent-Adjusted Form</h3>
+          <p><span class="tag">adjusted offense</span><span class="tag">adjusted defense</span><span class="tag">adjusted margin</span></p>
+          <p>This was competitive and sometimes better in confident-pick slices, but after the regular-season cleanup it no longer beat raw n=20 strength core overall.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Evidence That Shaped The Current Choice</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Experiment</th>
+            <th>Key Result</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Short vs long windows</td>
+            <td>n=3 and n=5 were weaker; n=10 to n=20 was the useful range.</td>
+            <td><span class="keep">Use n=20</span> for the current simple baseline.</td>
+          </tr>
+          <tr>
+            <td>Mixed-window model</td>
+            <td>Mixed windows were close but did not clearly beat the best global window on completed seasons.</td>
+            <td><span class="watch">Keep as an idea</span>, but do not use as the current default.</td>
+          </tr>
+          <tr>
+            <td>Grouped ablation</td>
+            <td>Margin/strength carried the clearest signal; removing it hurt log loss.</td>
+            <td><span class="keep">Center the model</span> around margin, points for/against, and win rate.</td>
+          </tr>
+          <tr>
+            <td>Regular-season cleanup</td>
+            <td>After removing postseason and special-event rows, raw n=20 strength core led at 0.6232 log loss.</td>
+            <td><span class="keep">Make it the canonical regular-season baseline.</span></td>
+          </tr>
+          <tr>
+            <td>Bootstrap comparison</td>
+            <td>The adjusted candidate was only 0.0006 log-loss points behind/away from raw n=20, with a wide interval.</td>
+            <td><span class="watch">Do not overclaim</span>; the current lead is practical, not mathematically final.</td>
+          </tr>
+          <tr>
+            <td>Low-confidence splits</td>
+            <td>45-55% predictions were noisy and close to random.</td>
+            <td><span class="drop">Treat near-50% picks as toss-ups.</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>How A Prediction Is Made</h2>
+      <div class="timeline">
+        <div class="step">
+          <strong>Step 1: Find the scheduled game.</strong>
+          <p>The upcoming schedule comes from ESPN schedule tables in SQLite.</p>
+        </div>
+        <div class="step">
+          <strong>Step 2: Build each team's recent history.</strong>
+          <p>For each team, the script looks at games before tipoff only, then takes the most recent 20 regular-season franchise games when available.</p>
+        </div>
+        <div class="step">
+          <strong>Step 3: Calculate the 12 strength inputs.</strong>
+          <p>The script computes recent points for, points against, margin, and win percentage for both teams, plus the home-minus-away difference for each.</p>
+        </div>
+        <div class="step">
+          <strong>Step 4: Train the logistic model.</strong>
+          <p>For each scheduled game, the model is trained on prior regular-season team-game rows. The target is whether the row's team won.</p>
+        </div>
+        <div class="step">
+          <strong>Step 5: Convert strength into probability.</strong>
+          <p>The model outputs the home team's win probability. The away team's probability is treated as the complement. The favorite is whichever side is above 50%.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>What The Model Does Not Know Yet</h2>
+      <div class="note">
+        The current model does not include injuries, player availability, starting lineups, minute restrictions, travel distance, betting market expectations, roster continuity, coaching changes, or player-level strength. Those are likely the next meaningful feature frontier.
+      </div>
+      <p>It also does not currently use home-court advantage directly, even though home court showed signal in earlier full-feature experiments. That is a deliberate simplicity choice for the current baseline after the broader context variants failed to beat raw n=20 strength core overall.</p>
+    </section>
+
+    <section>
+      <h2>Glossary: Stats And Jargon</h2>
+      <p>These are the terms used in the model reports and what they mean in this project.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Term</th>
+            <th>Plain-English Definition</th>
+            <th>How To Read It Here</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="term">Log loss</span></td>
+            <td>A scoring rule for probability predictions. It rewards confident correct predictions and punishes confident wrong predictions.</td>
+            <td>Lower is better. Random 50/50 is about 0.6931. Our current regular-season baseline is 0.6232, so it is finding real signal.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Brier score</span></td>
+            <td>The average squared distance between the predicted probability and the actual result.</td>
+            <td>Lower is better. It is another way to judge probability quality. The current baseline was 0.2167.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Accuracy</span></td>
+            <td>The share of rows where the model picked the winning side when using 50% as the cutoff.</td>
+            <td>Higher is better, but it ignores probability quality. A 51% pick and an 80% pick count the same for accuracy.</td>
+          </tr>
+          <tr>
+            <td><span class="term">AUC</span></td>
+            <td>Area under the ROC curve. It measures how well the model ranks winners above losers across probability thresholds.</td>
+            <td>0.50 is random ranking; 1.00 is perfect ranking. The current baseline was around 0.7115.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Calibration</span></td>
+            <td>Whether predicted probabilities match reality. If the model says 60%, those teams should win about 60% of the time.</td>
+            <td>A model can be accurate at picking winners but still overconfident or underconfident. Calibration checks help catch that.</td>
+          </tr>
+          <tr>
+            <td><span class="term">ECE</span></td>
+            <td>Expected calibration error. It summarizes how far prediction buckets are from actual win rates.</td>
+            <td>Lower is better. It is useful for checking whether the probabilities themselves are believable.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Rolling window</span></td>
+            <td>The recent set of games used to describe a team entering a matchup.</td>
+            <td><code>n=20</code> means the model looks at up to the previous 20 regular-season franchise games for each team.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Team-game row</span></td>
+            <td>One game represented from one team's point of view.</td>
+            <td>Every WNBA game creates two rows: one for Team A and one for Team B. The target is whether that row's team won.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Leakage</span></td>
+            <td>Accidentally letting future information into a prediction.</td>
+            <td>We avoid leakage by using only games played before the game being predicted.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Rolling-origin backtest</span></td>
+            <td>A historical test that trains on earlier seasons and predicts a later season, then rolls forward.</td>
+            <td>This better simulates real future prediction than randomly mixing old and future games together.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Regularized logistic regression</span></td>
+            <td>A model that turns numeric inputs into a win probability, with a penalty that keeps weights from getting too extreme.</td>
+            <td>It is simple, interpretable, and a good baseline before trying more complex model classes.</td>
+          </tr>
+          <tr>
+            <td><span class="term">scoreFor</span></td>
+            <td>Points scored by the team.</td>
+            <td>In the current model, this is averaged over the recent window for each team.</td>
+          </tr>
+          <tr>
+            <td><span class="term">scoreAgainst</span></td>
+            <td>Points allowed by the team.</td>
+            <td>Lower is usually better. It is the current model's simple defensive signal.</td>
+          </tr>
+          <tr>
+            <td><span class="term">margin</span></td>
+            <td>Points scored minus points allowed.</td>
+            <td>Positive means the team has recently outscored opponents. This has been one of the strongest signals.</td>
+          </tr>
+          <tr>
+            <td><span class="term">winPct</span></td>
+            <td>The team's winning percentage inside the rolling window.</td>
+            <td>It captures recent results, but margin often carries richer information because it includes how decisive the games were.</td>
+          </tr>
+          <tr>
+            <td><span class="term">Diff feature</span></td>
+            <td>A home-minus-away difference for one stat.</td>
+            <td>Example: <code>margin_diff</code> compares the home team's recent margin against the away team's recent margin.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Current Interpretation Rules</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Probability Range</th>
+            <th>Label</th>
+            <th>How To Read It</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>50% to 55%</td>
+            <td><span class="drop">Coin flip</span></td>
+            <td>The model is barely leaning. Treat this as weak evidence.</td>
+          </tr>
+          <tr>
+            <td>55% to 65%</td>
+            <td><span class="watch">Lean</span></td>
+            <td>The recent-strength profile favors one side, but the edge is modest.</td>
+          </tr>
+          <tr>
+            <td>65% and above</td>
+            <td><span class="keep">Solid</span></td>
+            <td>The model sees a clearer strength gap. Still not a guarantee, just a stronger probability signal.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

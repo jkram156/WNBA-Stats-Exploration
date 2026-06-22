@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WNBA Rolling Window Evaluation: Plain English Version</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --text: #182230;
+        --muted: #667085;
+        --panel: #ffffff;
+        --border: #d6dce6;
+        --green: #0f766e;
+        --green-soft: #dff5f1;
+        --blue-soft: #e7f0ff;
+        --gold-soft: #fff4d8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 40px 22px 64px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        font-size: 34px;
+      }
+
+      h2 {
+        margin-top: 34px;
+        font-size: 23px;
+      }
+
+      h3 {
+        margin-top: 22px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 10px 0 0;
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 0;
+        padding-left: 22px;
+      }
+
+      li + li {
+        margin-top: 7px;
+      }
+
+      .subhead {
+        max-width: 760px;
+        color: var(--muted);
+        font-size: 17px;
+      }
+
+      .card {
+        margin-top: 18px;
+        padding: 18px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .answer {
+        background: var(--green-soft);
+        border-color: #a9ded6;
+      }
+
+      .example {
+        background: var(--blue-soft);
+        border-color: #bfd4ff;
+      }
+
+      .caution {
+        background: var(--gold-soft);
+        border-color: #f0cf82;
+      }
+
+      .big {
+        display: block;
+        color: var(--green);
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.15;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+
+      .step {
+        padding: 16px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      table {
+        width: 100%;
+        margin-top: 14px;
+        border-collapse: collapse;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+      }
+
+      th {
+        background: #eef2f7;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      code {
+        padding: 2px 5px;
+        border-radius: 5px;
+        background: #e8edf4;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 28px 16px 48px;
+        }
+
+        h1 {
+          font-size: 28px;
+        }
+
+        .steps {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>WNBA Rolling Window Evaluation</h1>
+        <p class="subhead">
+          A plain-English version of what we tested, why we tested it, and what the results mean.
+        </p>
+      </header>
+
+      <section class="card answer">
+        <span class="big">Short answer</span>
+        <p>
+          We tested whether a team's recent games can help predict whether they will win their next game. We tried looking
+          back over different numbers of games, like the last 3 games, last 5 games, last 10 games, and last 20 games.
+        </p>
+        <p>
+          So far, very short windows like 3 or 5 games do not look as useful. Looking back around 10 to 20 games has worked
+          better. After adding more basketball context, the best simple lookback is still around 20 games.
+        </p>
+      </section>
+
+      <section>
+        <h2>The Basic Idea</h2>
+        <p>
+          Imagine asking: "How has this team been playing lately?" To answer that, we average their recent stats.
+        </p>
+        <div class="card example">
+          <p>
+            If a team scored 80, 86, and 74 points in its last 3 games, its 3-game scoring average is:
+          </p>
+          <p><strong>(80 + 86 + 74) / 3 = 80 points per game</strong></p>
+        </div>
+        <p>
+          We do that for many stats, not just points. Then we ask whether those recent averages help predict the next game.
+        </p>
+      </section>
+
+      <section>
+        <h2>What Does "Rolling Window" Mean?</h2>
+        <p>
+          A rolling window is just "the last few games." The number tells us how many games we look back.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Window</th>
+              <th>Plain meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>n=3</code></td>
+              <td>Look at the team's last 3 games.</td>
+            </tr>
+            <tr>
+              <td><code>n=10</code></td>
+              <td>Look at the team's last 10 games.</td>
+            </tr>
+            <tr>
+              <td><code>n=20</code></td>
+              <td>Look at the team's last 20 games.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          We tested <code>3, 5, 8, 10, 12, 14, 16, 20</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>What Goes Into Each Prediction?</h2>
+        <p>
+          Each row is one team in one game. Since every game has two teams, each game creates two rows: one for Team A and
+          one for Team B.
+        </p>
+        <div class="steps">
+          <div class="step">
+            <strong>1. Look backward</strong>
+            Use only games that happened before the game being predicted.
+          </div>
+          <div class="step">
+            <strong>2. Average recent stats</strong>
+            Calculate recent averages for the team and its opponent.
+          </div>
+          <div class="step">
+            <strong>3. Predict win or loss</strong>
+            Estimate how likely the team is to win the game.
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Stats We Used</h2>
+        <p>
+          The model looks at recent team stats such as:
+        </p>
+        <ul>
+          <li>Points scored</li>
+          <li>Points allowed</li>
+          <li>Scoring margin</li>
+          <li>Assists</li>
+          <li>Rebounds</li>
+          <li>Steals</li>
+          <li>Blocks</li>
+          <li>Turnovers</li>
+          <li>Field goal percentage</li>
+          <li>Three-point percentage</li>
+          <li>Free throw percentage</li>
+          <li>Whether the team is home or away</li>
+          <li>How many rest days each team had</li>
+          <li>Whether either team is on a back-to-back</li>
+          <li>Whether one team has more rest than the other</li>
+          <li>How often each team has been winning recently</li>
+          <li>How often each team has been playing close games recently</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Extra Basketball Context We Added</h2>
+        <p>
+          We added clues that coaches and fans naturally care about, not just box-score averages.
+        </p>
+        <div class="card example">
+          <ul>
+            <li>Is the team playing at home?</li>
+            <li>Did one team get more rest?</li>
+            <li>Is either team playing the second game in two days?</li>
+            <li>Has the team been winning recently?</li>
+            <li>Has the team been in a lot of close games recently?</li>
+            <li>Does one team's recent scoring match up well against the opponent's recent defense?</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <h2>Team vs Opponent</h2>
+        <p>
+          We do not only look at one team by itself. For each stat, we compare the team to its opponent.
+        </p>
+        <div class="card example">
+          <p>For example, for scoring:</p>
+          <ul>
+            <li>Team's recent points scored</li>
+            <li>Opponent's recent points scored</li>
+            <li>Difference between the two</li>
+          </ul>
+        </div>
+        <p>
+          This matters because scoring 82 points per game means something different if the opponent has recently been
+          scoring 90 compared with 72.
+        </p>
+      </section>
+
+      <section>
+        <h2>How the Model Thinks</h2>
+        <p>
+          The model is like a scoreboard for clues. Some clues push the prediction toward "more likely to win." Other clues
+          push it toward "less likely to win."
+        </p>
+        <div class="card example">
+          <p>Helpful clues might be:</p>
+          <ul>
+            <li>The team has had a strong scoring margin recently.</li>
+            <li>The team is playing at home.</li>
+            <li>The opponent has been allowing a lot of points.</li>
+          </ul>
+        </div>
+        <p>
+          At the end, the model gives a probability, like "this team has a 58% chance to win."
+        </p>
+      </section>
+
+      <section>
+        <h2>How We Avoid Cheating</h2>
+        <p>
+          The most important rule: when predicting a game, we only use information that would have been known before that
+          game started.
+        </p>
+        <div class="card caution">
+          <p>
+            We do not use the current game's points, rebounds, turnovers, or final score to predict that same game. That
+            would be like reading the answer key before taking the test.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>How We Checked If It Worked</h2>
+        <p>
+          We tested it season by season starting in 2023.
+        </p>
+        <ol>
+          <li>To predict 2023 games, train on seasons before 2023.</li>
+          <li>To predict 2024 games, train on seasons before 2024.</li>
+          <li>To predict 2025 games, train on seasons before 2025.</li>
+        </ol>
+        <p>
+          This is closer to real life because the model only learns from the past before predicting the future.
+        </p>
+      </section>
+
+      <section>
+        <h2>What We Found</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Window</th>
+              <th>What happened</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>3</code> and <code>5</code></td>
+              <td>Too short. These were weaker than the longer windows.</td>
+            </tr>
+            <tr>
+              <td><code>8</code></td>
+              <td>Better than the shortest windows, but not the best.</td>
+            </tr>
+            <tr>
+              <td><code>10</code> to <code>20</code></td>
+              <td>Generally the strongest range.</td>
+            </tr>
+            <tr>
+              <td><code>20</code></td>
+              <td>Best single window in the completed-season 2023-2025 check.</td>
+            </tr>
+            <tr>
+              <td>Mixed</td>
+              <td>Lets each stat use its own window. It was very close to the best single window and sometimes better.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Which Clues Mattered Most?</h2>
+        <p>
+          We also checked what happened when we scrambled one clue at a time. If scrambling a clue makes the predictions
+          worse, that clue was probably useful.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Clue</th>
+              <th>Plain-English meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Home court</td>
+              <td>The biggest factor in the latest check. Being home helped a lot.</td>
+            </tr>
+            <tr>
+              <td>Recent scoring margin difference</td>
+              <td>Teams that had been outscoring opponents by more than their opponent had were stronger picks.</td>
+            </tr>
+            <tr>
+              <td>Team recent margin</td>
+              <td>A team that had recently been winning by more points looked better.</td>
+            </tr>
+            <tr>
+              <td>Opponent recent margin</td>
+              <td>An opponent that had recently been winning by more points made the game harder.</td>
+            </tr>
+            <tr>
+              <td>Points allowed difference</td>
+              <td>Recent defense mattered: allowing fewer points than the opponent was a good sign.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>What Is "Mixed"?</h2>
+        <p>
+          Instead of forcing every stat to use the same number of games, mixed windows let each stat choose its own lookback
+          length.
+        </p>
+        <div class="card example">
+          <p>For example:</p>
+          <ul>
+            <li>Scoring might work best using the last 12 games.</li>
+            <li>Rebounding might work best using the last 20 games.</li>
+            <li>Turnovers might work best using the last 10 or 12 games.</li>
+          </ul>
+        </div>
+        <p>
+          This makes sense because some stats may stabilize quickly, while others may need more games before they tell a
+          reliable story.
+        </p>
+      </section>
+
+      <section>
+        <h2>Plain-English Conclusion</h2>
+        <div class="card answer">
+          <p>
+            The main lesson so far is that "very recent form" is not enough by itself. Looking back only 3 or 5 games is
+            probably too noisy. A longer view, roughly 10 to 20 games, has been more useful for predicting wins and losses.
+          </p>
+          <p>
+            Right now, <code>n=20</code> is the best simple choice for completed seasons. The biggest useful clues are home
+            court and recent team strength, especially scoring margin.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Next Step</h2>
+        <p>
+          The next useful improvement is to add more basketball context. For example, instead of only asking "how well has
+          this team scored lately?", we can ask "how well has this team scored compared with the quality of defenses it has
+          faced?"
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "wnba-stats-exploration",
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.7.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval:rolling": "tsx src/evaluate-rolling-windows.ts",
+    "fetch:markets": "tsx src/fetch-market-lines.ts",
+    "predict:upcoming": "tsx src/predict-upcoming-games.ts",
+    "sync:espn-schedule": "tsx src/sync-espn-schedule.ts",
+    "sync:raw": "tsx src/sync-wnba-raw.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "crawlee": "^3.13.8",
+    "playwright": "^1.49.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
