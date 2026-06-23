@@ -8,9 +8,18 @@ Local SQLite sync tooling for the raw ESPN WNBA exports from `wehoop-wnba-raw`.
 pnpm install
 ```
 
+This repo includes `wnba_raw.sqlite` as a Git LFS seed database so a fresh clone can start from the compact parsed tables without rebuilding from the full raw export checkout. Install Git LFS before cloning or run this after cloning:
+
+```powershell
+git lfs install
+git lfs pull
+```
+
+The seed database is compact by default: it does not include `raw_files`, raw source payloads, or extracted raw JSON sidecars. Re-run the sync commands below when you want to refresh it from a local `wehoop-wnba-raw` checkout.
+
 ## Sync Raw Exports
 
-By default, the sync reads from `C:\Users\jkram\github\wehoop-wnba-raw` and writes `wnba_raw.sqlite` in this project root.
+By default, the sync reads from `C:\Users\jkram\github\wehoop-wnba-raw` and writes `wnba_raw.sqlite` in the current project root. You can override either location with `WNBA_RAW_ROOT`, `WNBA_RAW_DB`, `--source`, or `--db`.
 
 ```powershell
 pnpm run sync:raw
@@ -22,10 +31,20 @@ Useful options:
 pnpm run sync:raw -- --source C:\Users\jkram\github\wehoop-wnba-raw --db .\wnba_raw.sqlite
 pnpm run sync:raw -- --prune
 pnpm run sync:raw -- --dry-run
+pnpm run sync:raw -- --store-source-metadata
 pnpm run sync:raw -- --store-raw-content
+pnpm run sync:raw -- --store-extracted-json
 ```
 
-The database stores every `.json`, `.parquet`, and `.rds` source artifact under `raw_files` with path, hash, size, mtime, dataset, and inferred year/entity IDs. By default it keeps raw payloads on disk in the source checkout and extracts useful JSON into relational tables. Use `--store-raw-content` only if you also want raw JSON text and parquet/RDS blobs embedded in SQLite.
+By default, the database stores the parsed relational tables only. The source payloads remain in the source checkout, and raw JSON sidecars in parsed tables are left empty. Use `--store-source-metadata` if you want a `raw_files` inventory table with source paths and hashes, `--store-raw-content` if you also want raw JSON text and parquet/RDS blobs embedded in SQLite, or `--store-extracted-json` if you want raw JSON sidecars in the parsed tables.
+
+To strip an older copied database down to parsed data and reclaim disk space:
+
+```powershell
+pnpm run compact:db
+```
+
+This drops `raw_files`, clears raw JSON sidecar columns, and runs `VACUUM`. Add `--keep-source-metadata` to retain `raw_files`, or `--no-vacuum` to skip the file rewrite.
 
 ## Evaluate Rolling Windows
 
@@ -59,7 +78,7 @@ Fetch the WNBA schedule from ESPN's public scoreboard API and store it in the lo
 pnpm run sync:espn-schedule -- --season 2026
 ```
 
-This writes normalized schedule rows to `espn_schedule_events` and `espn_schedule_competitors`, while keeping the full source event JSON in `espn_schedule_events.raw_json`.
+This writes normalized schedule rows to `espn_schedule_events` and `espn_schedule_competitors`. Raw ESPN event/competitor JSON sidecars are skipped by default; add `--store-extracted-json` if you need them for audit work.
 
 ## Predict Upcoming Games
 

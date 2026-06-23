@@ -6,6 +6,7 @@ storage/
 *.db-shm
 *.db-wal
 *.sqlite
+!wnba_raw.sqlite
 *.sqlite-shm
 *.sqlite-wal
 reports/market-lines.json

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "eval:rolling": "tsx src/evaluate-rolling-windows.ts",
+    "compact:db": "tsx src/compact-wnba-db.ts",
     "fetch:markets": "tsx src/fetch-market-lines.ts",
     "predict:upcoming": "tsx src/predict-upcoming-games.ts",
     "sync:espn-schedule": "tsx src/sync-espn-schedule.ts",

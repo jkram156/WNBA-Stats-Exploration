@@ -7,6 +7,7 @@ type Options = {
   season: number;
   limit: number;
   insecureTls: boolean;
+  storeExtractedJson: boolean;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -92,6 +93,7 @@ function parseArgs(argv: string[]): Options {
     season: new Date().getFullYear(),
     limit: 1000,
     insecureTls: false,
+    storeExtractedJson: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -109,6 +111,8 @@ function parseArgs(argv: string[]): Options {
       i += 1;
     } else if (arg === "--insecure-tls") {
       options.insecureTls = true;
+    } else if (arg === "--store-extracted-json") {
+      options.storeExtractedJson = true;
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -136,6 +140,8 @@ Options:
   --season <year>   ESPN WNBA season to fetch. Defaults to the current year.
   --limit <n>       ESPN API event limit. Defaults to 1000.
   --insecure-tls    Disable Node TLS verification for this fetch.
+  --store-extracted-json
+                    Store raw ESPN event/competitor JSON sidecars. Off by default.
   -h, --help        Show this help text.
 `);
 }
@@ -180,7 +186,7 @@ function ensureSchema(db: Database.Database): void {
       time_valid INTEGER,
       broadcast TEXT,
       source_url TEXT NOT NULL,
-      raw_json TEXT NOT NULL,
+      raw_json TEXT,
       last_synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -200,7 +206,7 @@ function ensureSchema(db: Database.Database): void {
       team_color TEXT,
       team_logo TEXT,
       records_json TEXT,
-      raw_json TEXT NOT NULL,
+      raw_json TEXT,
       PRIMARY KEY (event_id, team_id),
       FOREIGN KEY (event_id) REFERENCES espn_schedule_events(event_id) ON DELETE CASCADE
     );
@@ -240,7 +246,7 @@ async function fetchSchedule(url: string, insecureTls: boolean): Promise<Schedul
   return (await response.json()) as ScheduleResponse;
 }
 
-function syncSchedule(db: Database.Database, sourceUrl: string, season: number, events: EspnEvent[]): void {
+function syncSchedule(db: Database.Database, options: Options, sourceUrl: string, events: EspnEvent[]): void {
   const run = db
     .prepare(
       `
@@ -248,7 +254,7 @@ function syncSchedule(db: Database.Database, sourceUrl: string, season: number, 
       VALUES (?, ?, CURRENT_TIMESTAMP, 'running')
     `,
     )
-    .run(sourceUrl, season);
+    .run(sourceUrl, options.season);
 
   const insertEvent = db.prepare(`
     INSERT INTO espn_schedule_events (
@@ -344,7 +350,7 @@ function syncSchedule(db: Database.Database, sourceUrl: string, season: number, 
           timeValid: booleanToInteger(competition?.timeValid),
           broadcast: valueOrNull(broadcastLabel(competition)),
           sourceUrl,
-          rawJson: JSON.stringify(event),
+          rawJson: options.storeExtractedJson ? JSON.stringify(event) : "",
         });
 
         deleteCompetitors.run(eventId);
@@ -369,8 +375,8 @@ function syncSchedule(db: Database.Database, sourceUrl: string, season: number, 
             teamShortDisplayName: valueOrNull(competitor.team?.shortDisplayName),
             teamColor: valueOrNull(competitor.team?.color),
             teamLogo: valueOrNull(competitor.team?.logo),
-            recordsJson: competitor.records === undefined ? null : JSON.stringify(competitor.records),
-            rawJson: JSON.stringify(competitor),
+            recordsJson: options.storeExtractedJson && competitor.records !== undefined ? JSON.stringify(competitor.records) : null,
+            rawJson: options.storeExtractedJson ? JSON.stringify(competitor) : "",
           });
         }
       }
@@ -435,7 +441,7 @@ async function main(): Promise<void> {
 
   try {
     ensureSchema(db);
-    syncSchedule(db, url, options.season, events);
+    syncSchedule(db, options, url, events);
   } finally {
     db.close();
   }

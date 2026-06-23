@@ -9,7 +9,9 @@ type Options = {
   dbPath: string;
   prune: boolean;
   dryRun: boolean;
+  storeSourceMetadata: boolean;
   storeRawContent: boolean;
+  storeExtractedJson: boolean;
 };
 
 type SourceFile = {
@@ -28,6 +30,7 @@ type LoadedSourceFile = SourceFile & {
   contentText: string | null;
   contentBlob: Buffer | null;
   jsonValid: 0 | 1 | null;
+  storeExtractedJson: boolean;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -43,7 +46,9 @@ function parseArgs(argv: string[]): Options {
     dbPath: process.env.WNBA_RAW_DB ?? DEFAULT_DB_PATH,
     prune: false,
     dryRun: false,
+    storeSourceMetadata: false,
     storeRawContent: false,
+    storeExtractedJson: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -60,8 +65,13 @@ function parseArgs(argv: string[]): Options {
       options.prune = true;
     } else if (arg === "--dry-run") {
       options.dryRun = true;
+    } else if (arg === "--store-source-metadata") {
+      options.storeSourceMetadata = true;
     } else if (arg === "--store-raw-content") {
       options.storeRawContent = true;
+      options.storeSourceMetadata = true;
+    } else if (arg === "--store-extracted-json") {
+      options.storeExtractedJson = true;
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -83,13 +93,17 @@ Options:
   --db <path>      SQLite database path. Defaults to ${DEFAULT_DB_PATH}
   --prune          Delete database rows for source files that no longer exist.
   --dry-run        Scan and report changes without writing to SQLite.
+  --store-source-metadata
+                  Store source file paths, hashes, sizes, and inferred metadata in raw_files.
   --store-raw-content
-                  Store JSON text and parquet/RDS blobs in raw_files. Off by default.
+                  Store JSON text and parquet/RDS blobs in raw_files. Also enables --store-source-metadata.
+  --store-extracted-json
+                  Store raw JSON sidecars in parsed tables. Off by default.
   -h, --help       Show this help text.
 `);
 }
 
-function ensureSchema(db: Database.Database): void {
+function ensureSchema(db: Database.Database, storeSourceMetadata: boolean): void {
   db.exec(`
     PRAGMA journal_mode = DELETE;
     PRAGMA synchronous = NORMAL;
@@ -108,7 +122,10 @@ function ensureSchema(db: Database.Database): void {
       status TEXT NOT NULL,
       error TEXT
     );
+  `);
 
+  if (storeSourceMetadata) {
+    db.exec(`
     CREATE TABLE IF NOT EXISTS raw_files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       dataset TEXT NOT NULL,
@@ -132,7 +149,10 @@ function ensureSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_raw_files_inferred_year ON raw_files(inferred_year);
     CREATE INDEX IF NOT EXISTS idx_raw_files_inferred_entity_id ON raw_files(inferred_entity_id);
     CREATE INDEX IF NOT EXISTS idx_raw_files_sha256 ON raw_files(sha256);
+    `);
+  }
 
+  db.exec(`
     CREATE TABLE IF NOT EXISTS teams (
       team_id TEXT PRIMARY KEY,
       uid TEXT,
@@ -239,8 +259,84 @@ function ensureSchema(db: Database.Database): void {
       shooting_play INTEGER,
       score_value INTEGER,
       text TEXT,
-      raw_json TEXT NOT NULL,
+      raw_json TEXT,
       PRIMARY KEY (source_relative_path, play_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS game_officials (
+      game_id TEXT NOT NULL,
+      official_id TEXT NOT NULL,
+      official_order INTEGER NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      full_name TEXT,
+      display_name TEXT,
+      position_id TEXT,
+      position_name TEXT,
+      position_display_name TEXT,
+      source_relative_path TEXT NOT NULL,
+      raw_json TEXT,
+      PRIMARY KEY (game_id, official_id, official_order)
+    );
+
+    CREATE TABLE IF NOT EXISTS team_standings_stats (
+      season_year INTEGER NOT NULL,
+      season_type INTEGER NOT NULL,
+      group_id TEXT NOT NULL,
+      group_name TEXT,
+      group_abbreviation TEXT,
+      team_id TEXT NOT NULL,
+      stat_name TEXT NOT NULL,
+      display_name TEXT,
+      short_display_name TEXT,
+      description TEXT,
+      abbreviation TEXT,
+      stat_type TEXT,
+      value REAL,
+      display_value TEXT,
+      source_relative_path TEXT NOT NULL,
+      raw_json TEXT,
+      PRIMARY KEY (season_year, season_type, group_id, team_id, stat_name)
+    );
+
+    CREATE TABLE IF NOT EXISTS team_roster_members (
+      requested_season INTEGER NOT NULL,
+      season_type INTEGER,
+      team_id TEXT NOT NULL,
+      athlete_id TEXT NOT NULL,
+      jersey TEXT,
+      position_id TEXT,
+      position_name TEXT,
+      position_display_name TEXT,
+      position_abbreviation TEXT,
+      height REAL,
+      display_height TEXT,
+      weight REAL,
+      display_weight TEXT,
+      age INTEGER,
+      date_of_birth TEXT,
+      birth_place_city TEXT,
+      birth_place_state TEXT,
+      birth_place_country TEXT,
+      headshot_href TEXT,
+      source_relative_path TEXT NOT NULL,
+      raw_json TEXT,
+      PRIMARY KEY (requested_season, team_id, athlete_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS game_roster_members (
+      game_id TEXT NOT NULL,
+      team_id TEXT NOT NULL,
+      athlete_id TEXT NOT NULL,
+      category_name TEXT NOT NULL,
+      category_display_name TEXT,
+      starter INTEGER,
+      did_not_play INTEGER,
+      ejected INTEGER,
+      active INTEGER,
+      source_relative_path TEXT NOT NULL,
+      raw_json TEXT,
+      PRIMARY KEY (game_id, team_id, athlete_id, category_name)
     );
 
     CREATE TABLE IF NOT EXISTS team_season_stats (
@@ -291,6 +387,11 @@ function ensureSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_games_season_year ON games(season_year);
     CREATE INDEX IF NOT EXISTS idx_game_plays_game_id ON game_plays(game_id);
+    CREATE INDEX IF NOT EXISTS idx_game_officials_official ON game_officials(official_id);
+    CREATE INDEX IF NOT EXISTS idx_team_standings_stats_team ON team_standings_stats(team_id);
+    CREATE INDEX IF NOT EXISTS idx_team_roster_members_athlete ON team_roster_members(athlete_id);
+    CREATE INDEX IF NOT EXISTS idx_game_roster_members_game ON game_roster_members(game_id);
+    CREATE INDEX IF NOT EXISTS idx_game_roster_members_athlete ON game_roster_members(athlete_id);
     CREATE INDEX IF NOT EXISTS idx_game_player_box_stats_athlete ON game_player_box_stats(athlete_id);
     CREATE INDEX IF NOT EXISTS idx_player_season_stats_athlete ON player_season_stats(athlete_id);
   `);
@@ -350,6 +451,7 @@ function loadSourceFile(file: SourceFile, storeRawContent: boolean): LoadedSourc
     contentText,
     contentBlob: storeRawContent && file.extension !== "json" ? content : null,
     jsonValid: contentText === null ? null : isValidJson(contentText),
+    storeExtractedJson: false,
   };
 }
 
@@ -391,13 +493,17 @@ function inferYear(pathParts: string[]): number | null {
   return yearMatch ? Number(yearMatch[0]) : null;
 }
 
-function refreshExtractedTables(db: Database.Database, files: SourceFile[]): void {
+function refreshExtractedTables(db: Database.Database, files: SourceFile[], storeExtractedJson: boolean): void {
   const statements = buildExtractionStatements(db);
 
   db.exec(`
     DELETE FROM draft_picks;
     DELETE FROM player_season_stats;
     DELETE FROM team_season_stats;
+    DELETE FROM game_roster_members;
+    DELETE FROM team_roster_members;
+    DELETE FROM team_standings_stats;
+    DELETE FROM game_officials;
     DELETE FROM game_plays;
     DELETE FROM game_player_box_stats;
     DELETE FROM game_team_box_stats;
@@ -423,9 +529,14 @@ function refreshExtractedTables(db: Database.Database, files: SourceFile[]): voi
       contentText,
       contentBlob: null,
       jsonValid: 1,
+      storeExtractedJson,
     };
     const json = JSON.parse(contentText) as JsonRecord;
     extractGameDocument(statements, loadedFile, json);
+    extractOfficials(statements, loadedFile, json);
+    extractStandings(statements, loadedFile, json);
+    extractTeamRoster(statements, loadedFile, json);
+    extractGameRoster(statements, loadedFile, json);
     extractTeamSeasonStats(statements, loadedFile, json);
     extractPlayerSeasonStats(statements, loadedFile, json);
     extractDraft(statements, loadedFile, json);
@@ -539,6 +650,52 @@ function buildExtractionStatements(db: Database.Database) {
         @homeScore, @awayScore, @teamId, @scoringPlay, @shootingPlay, @scoreValue, @text, @rawJson
       )
     `),
+    gameOfficial: db.prepare(`
+      INSERT OR REPLACE INTO game_officials (
+        game_id, official_id, official_order, first_name, last_name, full_name, display_name,
+        position_id, position_name, position_display_name, source_relative_path, raw_json
+      )
+      VALUES (
+        @gameId, @officialId, @officialOrder, @firstName, @lastName, @fullName, @displayName,
+        @positionId, @positionName, @positionDisplayName, @sourceRelativePath, @rawJson
+      )
+    `),
+    teamStandingsStat: db.prepare(`
+      INSERT OR REPLACE INTO team_standings_stats (
+        season_year, season_type, group_id, group_name, group_abbreviation, team_id,
+        stat_name, display_name, short_display_name, description, abbreviation, stat_type,
+        value, display_value, source_relative_path, raw_json
+      )
+      VALUES (
+        @seasonYear, @seasonType, @groupId, @groupName, @groupAbbreviation, @teamId,
+        @statName, @displayName, @shortDisplayName, @description, @abbreviation, @statType,
+        @value, @displayValue, @sourceRelativePath, @rawJson
+      )
+    `),
+    teamRosterMember: db.prepare(`
+      INSERT OR REPLACE INTO team_roster_members (
+        requested_season, season_type, team_id, athlete_id, jersey, position_id, position_name,
+        position_display_name, position_abbreviation, height, display_height, weight, display_weight,
+        age, date_of_birth, birth_place_city, birth_place_state, birth_place_country,
+        headshot_href, source_relative_path, raw_json
+      )
+      VALUES (
+        @requestedSeason, @seasonType, @teamId, @athleteId, @jersey, @positionId, @positionName,
+        @positionDisplayName, @positionAbbreviation, @height, @displayHeight, @weight, @displayWeight,
+        @age, @dateOfBirth, @birthPlaceCity, @birthPlaceState, @birthPlaceCountry,
+        @headshotHref, @sourceRelativePath, @rawJson
+      )
+    `),
+    gameRosterMember: db.prepare(`
+      INSERT OR REPLACE INTO game_roster_members (
+        game_id, team_id, athlete_id, category_name, category_display_name,
+        starter, did_not_play, ejected, active, source_relative_path, raw_json
+      )
+      VALUES (
+        @gameId, @teamId, @athleteId, @categoryName, @categoryDisplayName,
+        @starter, @didNotPlay, @ejected, @active, @sourceRelativePath, @rawJson
+      )
+    `),
     teamSeasonStat: db.prepare(`
       INSERT OR REPLACE INTO team_season_stats (
         requested_season, team_id, category_name, stat_name, display_name, abbreviation,
@@ -604,7 +761,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
     venueId: toText(venue?.id),
     venueName: toText(venue?.fullName) ?? toText(venue?.name),
     sourceRelativePath: file.relativePath,
-    rawHeaderJson: JSON.stringify(header),
+    rawHeaderJson: stringifySidecar(file, header),
   });
 
   for (const competitor of asArray(competition.competitors)) {
@@ -614,7 +771,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
     if (!competitorRecord || !teamId) {
       continue;
     }
-    upsertTeam(statements, team);
+    upsertTeam(statements, team, file.storeExtractedJson);
     statements.gameCompetitor.run({
       gameId,
       teamId,
@@ -622,9 +779,9 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
       score: toNumber(competitorRecord.score),
       winner: toBooleanInteger(competitorRecord.winner),
       seed: toInteger(competitorRecord.curatedRank),
-      recordsJson: stringifyNullable(competitorRecord.records),
-      linescoresJson: stringifyNullable(competitorRecord.linescores),
-      rawJson: JSON.stringify(competitorRecord),
+      recordsJson: stringifyNullableSidecar(file, competitorRecord.records),
+      linescoresJson: stringifyNullableSidecar(file, competitorRecord.linescores),
+      rawJson: stringifySidecar(file, competitorRecord),
     });
   }
 
@@ -636,7 +793,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
     if (!teamBoxRecord || !teamId) {
       continue;
     }
-    upsertTeam(statements, team);
+    upsertTeam(statements, team, file.storeExtractedJson);
     for (const stat of asArray(teamBoxRecord.statistics)) {
       const statRecord = asRecord(stat);
       const statName = toText(statRecord?.name);
@@ -651,7 +808,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
         abbreviation: toText(statRecord.abbreviation),
         value: toNumber(statRecord.value),
         displayValue: toText(statRecord.displayValue),
-        rawJson: JSON.stringify(statRecord),
+        rawJson: stringifySidecar(file, statRecord),
       });
     }
   }
@@ -663,7 +820,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
     if (!playerTeamRecord || !teamId) {
       continue;
     }
-    upsertTeam(statements, team);
+    upsertTeam(statements, team, file.storeExtractedJson);
     for (const category of asArray(playerTeamRecord.statistics)) {
       const categoryRecord = asRecord(category);
       const categoryName = toText(categoryRecord?.name) ?? "boxscore";
@@ -678,7 +835,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
         if (!athleteRowRecord || !athlete || !athleteId) {
           continue;
         }
-        upsertAthlete(statements, athlete);
+        upsertAthlete(statements, athlete, file.storeExtractedJson);
 
         const values = asArray(athleteRowRecord.stats).map(toText);
         for (let index = 0; index < values.length; index += 1) {
@@ -696,7 +853,7 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
             didNotPlay: toBooleanInteger(athleteRowRecord.didNotPlay),
             ejected: toBooleanInteger(athleteRowRecord.ejected),
             active: toBooleanInteger(athleteRowRecord.active),
-            rawAthleteJson: JSON.stringify(athleteRowRecord),
+            rawAthleteJson: stringifySidecar(file, athleteRowRecord),
           });
         }
       }
@@ -723,8 +880,202 @@ function extractGameDocument(statements: ExtractionStatements, file: LoadedSourc
       shootingPlay: toBooleanInteger(playRecord.shootingPlay),
       scoreValue: toInteger(playRecord.scoreValue),
       text: toText(playRecord.text),
-      rawJson: JSON.stringify(playRecord),
+      rawJson: file.storeExtractedJson ? JSON.stringify(playRecord) : "",
     });
+  }
+}
+
+function extractOfficials(statements: ExtractionStatements, file: LoadedSourceFile, json: JsonRecord): void {
+  if (file.dataset !== "officials") {
+    return;
+  }
+
+  const gameId = file.inferredEntityId;
+  if (!gameId) {
+    return;
+  }
+
+  for (const official of asArray(json.items)) {
+    const officialRecord = asRecord(official);
+    const officialId = toText(officialRecord?.id);
+    const officialOrder = toInteger(officialRecord?.order);
+    if (!officialRecord || !officialId || officialOrder === null) {
+      continue;
+    }
+
+    const position = asRecord(officialRecord.position);
+    statements.gameOfficial.run({
+      gameId,
+      officialId,
+      officialOrder,
+      firstName: toText(officialRecord.firstName),
+      lastName: toText(officialRecord.lastName),
+      fullName: toText(officialRecord.fullName),
+      displayName: toText(officialRecord.displayName),
+      positionId: toText(position?.id),
+      positionName: toText(position?.name),
+      positionDisplayName: toText(position?.displayName),
+      sourceRelativePath: file.relativePath,
+      rawJson: stringifySidecar(file, officialRecord),
+    });
+  }
+}
+
+function extractStandings(statements: ExtractionStatements, file: LoadedSourceFile, json: JsonRecord): void {
+  if (file.dataset !== "standings") {
+    return;
+  }
+
+  const groups = asArray(json.children)
+    .map(asRecord)
+    .filter((group): group is JsonRecord => group !== null);
+  const standingGroups = groups.length > 0 ? groups : [json];
+
+  for (const group of standingGroups) {
+    const standings = asRecord(group.standings);
+    const seasonYear = toInteger(standings?.season) ?? file.inferredYear;
+    const seasonType = toInteger(standings?.seasonType) ?? 2;
+    const groupId = toText(group.id) ?? "overall";
+    if (!seasonYear) {
+      continue;
+    }
+
+    for (const entry of asArray(standings?.entries)) {
+      const entryRecord = asRecord(entry);
+      const team = asRecord(entryRecord?.team);
+      const teamId = toText(team?.id);
+      if (!entryRecord || !teamId) {
+        continue;
+      }
+
+      upsertTeam(statements, team, file.storeExtractedJson);
+      for (const stat of asArray(entryRecord.stats)) {
+        const statRecord = asRecord(stat);
+        const statName = toText(statRecord?.name);
+        if (!statRecord || !statName) {
+          continue;
+        }
+
+        statements.teamStandingsStat.run({
+          seasonYear,
+          seasonType,
+          groupId,
+          groupName: toText(group.name),
+          groupAbbreviation: toText(group.abbreviation),
+          teamId,
+          statName,
+          displayName: toText(statRecord.displayName),
+          shortDisplayName: toText(statRecord.shortDisplayName),
+          description: toText(statRecord.description),
+          abbreviation: toText(statRecord.abbreviation),
+          statType: toText(statRecord.type),
+          value: toNumber(statRecord.value),
+          displayValue: toText(statRecord.displayValue),
+          sourceRelativePath: file.relativePath,
+          rawJson: stringifySidecar(file, statRecord),
+        });
+      }
+    }
+  }
+}
+
+function extractTeamRoster(statements: ExtractionStatements, file: LoadedSourceFile, json: JsonRecord): void {
+  if (file.dataset !== "team_rosters") {
+    return;
+  }
+
+  const requestedSeason = toInteger(asRecord(json.season)?.year) ?? file.inferredYear;
+  const seasonType = toInteger(asRecord(json.season)?.type);
+  const teamId = file.inferredEntityId;
+  if (!requestedSeason || !teamId || teamId.startsWith("-")) {
+    return;
+  }
+
+  for (const athlete of rosterAthletes(json.athletes)) {
+    const athleteId = toText(athlete.id);
+    if (!athleteId) {
+      continue;
+    }
+
+    upsertAthlete(statements, athlete, file.storeExtractedJson);
+    const position = asRecord(athlete.position);
+    const birthPlace = asRecord(athlete.birthPlace);
+    const headshot = asRecord(athlete.headshot);
+    statements.teamRosterMember.run({
+      requestedSeason,
+      seasonType,
+      teamId,
+      athleteId,
+      jersey: toText(athlete.jersey),
+      positionId: toText(position?.id),
+      positionName: toText(position?.name),
+      positionDisplayName: toText(position?.displayName),
+      positionAbbreviation: toText(position?.abbreviation),
+      height: toNumber(athlete.height),
+      displayHeight: toText(athlete.displayHeight),
+      weight: toNumber(athlete.weight),
+      displayWeight: toText(athlete.displayWeight),
+      age: toInteger(athlete.age),
+      dateOfBirth: toText(athlete.dateOfBirth),
+      birthPlaceCity: toText(birthPlace?.city),
+      birthPlaceState: toText(birthPlace?.state),
+      birthPlaceCountry: toText(birthPlace?.country),
+      headshotHref: toText(headshot?.href),
+      sourceRelativePath: file.relativePath,
+      rawJson: stringifySidecar(file, athlete),
+    });
+  }
+}
+
+function extractGameRoster(statements: ExtractionStatements, file: LoadedSourceFile, json: JsonRecord): void {
+  if (file.dataset !== "game_rosters") {
+    return;
+  }
+
+  const gameId = file.inferredEntityId;
+  if (!gameId) {
+    return;
+  }
+
+  const boxscore = asRecord(json.boxscore);
+  for (const playerTeam of asArray(boxscore?.players)) {
+    const playerTeamRecord = asRecord(playerTeam);
+    const team = asRecord(playerTeamRecord?.team);
+    const teamId = toText(team?.id);
+    if (!playerTeamRecord || !teamId) {
+      continue;
+    }
+
+    upsertTeam(statements, team, file.storeExtractedJson);
+    for (const category of asArray(playerTeamRecord.statistics)) {
+      const categoryRecord = asRecord(category);
+      const categoryName = toText(categoryRecord?.name) ?? "boxscore";
+      const categoryDisplayName = toText(categoryRecord?.displayName);
+
+      for (const athleteRow of asArray(categoryRecord?.athletes)) {
+        const athleteRowRecord = asRecord(athleteRow);
+        const athlete = asRecord(athleteRowRecord?.athlete);
+        const athleteId = toText(athlete?.id);
+        if (!athleteRowRecord || !athlete || !athleteId) {
+          continue;
+        }
+
+        upsertAthlete(statements, athlete, file.storeExtractedJson);
+        statements.gameRosterMember.run({
+          gameId,
+          teamId,
+          athleteId,
+          categoryName,
+          categoryDisplayName,
+          starter: toBooleanInteger(athleteRowRecord.starter),
+          didNotPlay: toBooleanInteger(athleteRowRecord.didNotPlay),
+          ejected: toBooleanInteger(athleteRowRecord.ejected),
+          active: toBooleanInteger(athleteRowRecord.active),
+          sourceRelativePath: file.relativePath,
+          rawJson: stringifySidecar(file, athleteRowRecord),
+        });
+      }
+    }
   }
 }
 
@@ -740,7 +1091,7 @@ function extractTeamSeasonStats(statements: ExtractionStatements, file: LoadedSo
     return;
   }
 
-  upsertTeam(statements, team);
+  upsertTeam(statements, team, file.storeExtractedJson);
   const categories = asArray(asRecord(asRecord(json.results)?.stats)?.categories);
   for (const category of categories) {
     const categoryRecord = asRecord(category);
@@ -762,7 +1113,7 @@ function extractTeamSeasonStats(statements: ExtractionStatements, file: LoadedSo
         displayValue: toText(statRecord.displayValue),
         perGameValue: toNumber(statRecord.perGameValue),
         perGameDisplayValue: toText(statRecord.perGameDisplayValue),
-        rawJson: JSON.stringify(statRecord),
+        rawJson: stringifySidecar(file, statRecord),
       });
     }
   }
@@ -777,6 +1128,33 @@ function extractPlayerSeasonStats(statements: ExtractionStatements, file: Loaded
   const requestedSeason = file.inferredYear;
   if (!athleteId || !requestedSeason) {
     return;
+  }
+
+  for (const category of asArray(asRecord(json.splits)?.categories)) {
+    const categoryRecord = asRecord(category);
+    const categoryName = toText(categoryRecord?.name) ?? "stats";
+    for (const stat of asArray(categoryRecord?.stats)) {
+      const statRecord = asRecord(stat);
+      const statName = toText(statRecord?.name);
+      if (!statRecord || !statName) {
+        continue;
+      }
+
+      statements.playerSeasonStat.run({
+        requestedSeason,
+        athleteId,
+        categoryName,
+        rowSeasonYear: requestedSeason,
+        teamId: null,
+        teamSlug: null,
+        position: null,
+        statKey: statName,
+        statLabel: toText(statRecord.abbreviation),
+        statDisplayName: toText(statRecord.displayName),
+        statDescription: toText(statRecord.description),
+        statValue: toText(statRecord.displayValue) ?? toText(statRecord.value),
+      });
+    }
   }
 
   for (const category of asArray(json.categories)) {
@@ -827,7 +1205,7 @@ function extractDraft(statements: ExtractionStatements, file: LoadedSourceFile, 
   }
 
   for (const team of asArray(json.teams)) {
-    upsertTeam(statements, asRecord(team));
+    upsertTeam(statements, asRecord(team), file.storeExtractedJson);
   }
 
   for (const pick of asArray(json.picks)) {
@@ -840,8 +1218,8 @@ function extractDraft(statements: ExtractionStatements, file: LoadedSourceFile, 
     const team = asRecord(pickRecord.team);
     const athlete = asRecord(pickRecord.athlete);
     const position = asRecord(athlete?.position) ?? asRecord(pickRecord.position);
-    upsertTeam(statements, team);
-    upsertAthlete(statements, athlete);
+    upsertTeam(statements, team, file.storeExtractedJson);
+    upsertAthlete(statements, athlete, file.storeExtractedJson);
 
     statements.draftPick.run({
       draftYear,
@@ -854,12 +1232,38 @@ function extractDraft(statements: ExtractionStatements, file: LoadedSourceFile, 
       athleteDisplayName: toText(athlete?.displayName) ?? toText(pickRecord.displayName),
       positionName: toText(position?.name) ?? toText(position?.displayName),
       positionAbbreviation: toText(position?.abbreviation),
-      rawJson: JSON.stringify(pickRecord),
+      rawJson: stringifySidecar(file, pickRecord),
     });
   }
 }
 
-function upsertTeam(statements: ExtractionStatements, team: JsonRecord | null | undefined): void {
+function rosterAthletes(value: unknown): JsonRecord[] {
+  const athletes = asArray(value);
+  const flattened: JsonRecord[] = [];
+
+  for (const athleteOrGroup of athletes) {
+    const record = asRecord(athleteOrGroup);
+    if (!record) {
+      continue;
+    }
+
+    const items = asArray(record.items);
+    if (items.length > 0) {
+      for (const item of items) {
+        const athlete = asRecord(item);
+        if (athlete) {
+          flattened.push(athlete);
+        }
+      }
+    } else {
+      flattened.push(record);
+    }
+  }
+
+  return flattened;
+}
+
+function upsertTeam(statements: ExtractionStatements, team: JsonRecord | null | undefined, storeExtractedJson: boolean): void {
   const teamId = toText(team?.id);
   if (!team || !teamId) {
     return;
@@ -877,11 +1281,11 @@ function upsertTeam(statements: ExtractionStatements, team: JsonRecord | null | 
     color: toText(team.color),
     alternateColor: toText(team.alternateColor),
     logo: toText(team.logo),
-    rawJson: JSON.stringify(team),
+    rawJson: storeExtractedJson ? JSON.stringify(team) : null,
   });
 }
 
-function upsertAthlete(statements: ExtractionStatements, athlete: JsonRecord | null | undefined): void {
+function upsertAthlete(statements: ExtractionStatements, athlete: JsonRecord | null | undefined, storeExtractedJson: boolean): void {
   const athleteId = toText(athlete?.id);
   if (!athlete || !athleteId) {
     return;
@@ -898,7 +1302,7 @@ function upsertAthlete(statements: ExtractionStatements, athlete: JsonRecord | n
     lastName: toText(athlete.lastName),
     positionName: toText(position?.name) ?? toText(position?.displayName),
     positionAbbreviation: toText(position?.abbreviation),
-    rawJson: JSON.stringify(athlete),
+    rawJson: storeExtractedJson ? JSON.stringify(athlete) : null,
   });
 }
 
@@ -949,6 +1353,14 @@ function toBooleanInteger(value: unknown): 0 | 1 | null {
   return null;
 }
 
+function stringifySidecar(file: LoadedSourceFile, value: unknown): string | null {
+  return file.storeExtractedJson ? JSON.stringify(value) : null;
+}
+
+function stringifyNullableSidecar(file: LoadedSourceFile, value: unknown): string | null {
+  return file.storeExtractedJson ? stringifyNullable(value) : null;
+}
+
 function stringifyNullable(value: unknown): string | null {
   return value === undefined || value === null ? null : JSON.stringify(value);
 }
@@ -975,7 +1387,7 @@ function main(): void {
   }
 
   const db = new Database(options.dbPath);
-  ensureSchema(db);
+  ensureSchema(db, options.storeSourceMetadata);
 
   const createRun = db.prepare(`
     INSERT INTO sync_runs (source_root, started_at, status)
@@ -983,56 +1395,61 @@ function main(): void {
   `);
   const runId = Number(createRun.run(options.sourceRoot, startedAt).lastInsertRowid);
 
-  const existing = db.prepare("SELECT sha256 FROM raw_files WHERE relative_path = ?");
-  const upsert = db.prepare(`
-    INSERT INTO raw_files (
-      dataset,
-      relative_path,
-      extension,
-      source_path,
-      source_size,
-      source_mtime_ms,
-      sha256,
-      content_text,
-      content_blob,
-      json_valid,
-      inferred_year,
-      inferred_entity_id,
-      last_synced_at
-    )
-    VALUES (
-      @dataset,
-      @relativePath,
-      @extension,
-      @absolutePath,
-      @size,
-      @mtimeMs,
-      @sha256,
-      @contentText,
-      @contentBlob,
-      @jsonValid,
-      @inferredYear,
-      @inferredEntityId,
-      CURRENT_TIMESTAMP
-    )
-    ON CONFLICT(relative_path) DO UPDATE SET
-      dataset = excluded.dataset,
-      extension = excluded.extension,
-      source_path = excluded.source_path,
-      source_size = excluded.source_size,
-      source_mtime_ms = excluded.source_mtime_ms,
-      sha256 = excluded.sha256,
-      content_text = excluded.content_text,
-      content_blob = excluded.content_blob,
-      json_valid = excluded.json_valid,
-      inferred_year = excluded.inferred_year,
-      inferred_entity_id = excluded.inferred_entity_id,
-      last_synced_at = CURRENT_TIMESTAMP
-  `);
-  const pruneMissing = db.prepare(`
-    DELETE FROM raw_files
-    WHERE relative_path NOT IN (${files.map(() => "?").join(",")})
-  `);
+  const existing = options.storeSourceMetadata ? db.prepare("SELECT sha256 FROM raw_files WHERE relative_path = ?") : null;
+  const upsert = options.storeSourceMetadata
+    ? db.prepare(`
+      INSERT INTO raw_files (
+        dataset,
+        relative_path,
+        extension,
+        source_path,
+        source_size,
+        source_mtime_ms,
+        sha256,
+        content_text,
+        content_blob,
+        json_valid,
+        inferred_year,
+        inferred_entity_id,
+        last_synced_at
+      )
+      VALUES (
+        @dataset,
+        @relativePath,
+        @extension,
+        @absolutePath,
+        @size,
+        @mtimeMs,
+        @sha256,
+        @contentText,
+        @contentBlob,
+        @jsonValid,
+        @inferredYear,
+        @inferredEntityId,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT(relative_path) DO UPDATE SET
+        dataset = excluded.dataset,
+        extension = excluded.extension,
+        source_path = excluded.source_path,
+        source_size = excluded.source_size,
+        source_mtime_ms = excluded.source_mtime_ms,
+        sha256 = excluded.sha256,
+        content_text = excluded.content_text,
+        content_blob = excluded.content_blob,
+        json_valid = excluded.json_valid,
+        inferred_year = excluded.inferred_year,
+        inferred_entity_id = excluded.inferred_entity_id,
+        last_synced_at = CURRENT_TIMESTAMP
+    `)
+    : null;
+  const pruneMissing =
+    options.storeSourceMetadata && files.length > 0
+      ? db.prepare(`
+        DELETE FROM raw_files
+        WHERE relative_path NOT IN (${files.map(() => "?").join(",")})
+      `)
+      : null;
   const finishRun = db.prepare(`
     UPDATE sync_runs
     SET finished_at = ?,
@@ -1052,31 +1469,33 @@ function main(): void {
   let pruned = 0;
 
   const sync = db.transaction(() => {
-    for (const file of files) {
-      const loadedFile = loadSourceFile(file, options.storeRawContent);
-      const row = existing.get(loadedFile.relativePath) as { sha256: string } | undefined;
-      if (row?.sha256 === loadedFile.sha256) {
-        unchanged += 1;
-        continue;
-      }
+    if (options.storeSourceMetadata && existing && upsert) {
+      for (const file of files) {
+        const loadedFile = loadSourceFile(file, options.storeRawContent);
+        const row = existing.get(loadedFile.relativePath) as { sha256: string } | undefined;
+        if (row?.sha256 === loadedFile.sha256) {
+          unchanged += 1;
+          continue;
+        }
 
-      upsert.run(loadedFile);
-      if (row) {
-        updated += 1;
-      } else {
-        inserted += 1;
+        upsert.run(loadedFile);
+        if (row) {
+          updated += 1;
+        } else {
+          inserted += 1;
+        }
       }
     }
 
-    if (options.prune) {
+    if (options.prune && options.storeSourceMetadata) {
       if (files.length === 0) {
         pruned = db.prepare("DELETE FROM raw_files").run().changes;
-      } else {
+      } else if (pruneMissing) {
         pruned = pruneMissing.run(...files.map((file) => file.relativePath)).changes;
       }
     }
 
-    refreshExtractedTables(db, files);
+    refreshExtractedTables(db, files, options.storeExtractedJson);
   });
 
   try {
@@ -1110,7 +1529,11 @@ function main(): void {
   }
 
   console.log(`SQLite database: ${options.dbPath}`);
-  console.log(`Inserted ${inserted.toLocaleString()}, updated ${updated.toLocaleString()}, unchanged ${unchanged.toLocaleString()}, pruned ${pruned.toLocaleString()}`);
+  if (options.storeSourceMetadata) {
+    console.log(`Source metadata inserted ${inserted.toLocaleString()}, updated ${updated.toLocaleString()}, unchanged ${unchanged.toLocaleString()}, pruned ${pruned.toLocaleString()}`);
+  } else {
+    console.log("Source metadata skipped; parsed tables refreshed only.");
+  }
 }
 
 main();
