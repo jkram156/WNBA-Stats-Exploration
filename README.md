@@ -2,6 +2,28 @@
 
 Local SQLite sync tooling for the raw ESPN WNBA exports from `wehoop-wnba-raw`.
 
+## New Contributor Quick Start
+
+This repo is the modeling and compact database layer. It does not scrape ESPN directly for play-by-play files; it reads a local `wehoop-wnba-raw` checkout and turns those raw files into a compact SQLite database.
+
+For a first setup:
+
+```powershell
+git lfs install
+git lfs pull
+pnpm install
+```
+
+Use the raw fork when you need to refresh source files. Use this repo when you need to update the parsed tables, run evaluations, fetch market lines, or publish a refreshed seed DB. A new contributor can start with the checked-in seed DB; they only need the raw fork when they are refreshing or auditing source data.
+
+Current data flow:
+
+```text
+ESPN -> wehoop-wnba-raw fork -> WNBA-Stats-Exploration sync scripts -> wnba_raw.sqlite
+```
+
+The checked-in `wnba_raw.sqlite` is a Git LFS seed DB. It is meant to save new contributors from rebuilding the full historical database on day one.
+
 ## Setup
 
 ```powershell
@@ -17,6 +39,8 @@ git lfs pull
 
 The seed database is compact by default: it does not include `raw_files`, raw source payloads, or extracted raw JSON sidecars. Re-run the sync commands below when you want to refresh it from a local `wehoop-wnba-raw` checkout.
 
+If `wnba_raw.sqlite` is only a tiny pointer file after cloning, Git LFS has not pulled the real database yet. Run `git lfs pull` from this repo.
+
 ## Sync Raw Exports
 
 By default, the sync reads from `C:\Users\jkram\github\wehoop-wnba-raw` and writes `wnba_raw.sqlite` in the current project root. You can override either location with `WNBA_RAW_ROOT`, `WNBA_RAW_DB`, `--source`, or `--db`.
@@ -31,12 +55,29 @@ Useful options:
 pnpm run sync:raw -- --source C:\Users\jkram\github\wehoop-wnba-raw --db .\wnba_raw.sqlite
 pnpm run sync:raw -- --prune
 pnpm run sync:raw -- --dry-run
+pnpm run sync:raw -- --incremental --since <timestamp-before-scraper-run>
 pnpm run sync:raw -- --store-source-metadata
 pnpm run sync:raw -- --store-raw-content
 pnpm run sync:raw -- --store-extracted-json
 ```
 
 By default, the database stores the parsed relational tables only. The source payloads remain in the source checkout, and raw JSON sidecars in parsed tables are left empty. Use `--store-source-metadata` if you want a `raw_files` inventory table with source paths and hashes, `--store-raw-content` if you also want raw JSON text and parquet/RDS blobs embedded in SQLite, or `--store-extracted-json` if you want raw JSON sidecars in the parsed tables.
+
+Use `--incremental --since <iso>` for daily catch-up runs after refreshing raw files. Incremental sync deletes and rebuilds only the parsed rows tied to source files modified at or after that timestamp; omit it when you want a clean full rebuild from every raw file.
+
+For a daily game catch-up, the usual order is:
+
+```powershell
+cd C:\Users\jkram\github\wehoop-wnba-raw
+uv run --native-tls python python/scrape_wnba_schedules.py -s 2026 -e 2026
+uv run --native-tls python python/scrape_wnba_json.py -s 2026 -e 2026
+
+cd C:\Users\jkram\source\repos\WNBA-Stats-Exploration
+pnpm run sync:espn-schedule -- --season 2026 --insecure-tls
+pnpm run sync:raw -- --source C:\Users\jkram\github\wehoop-wnba-raw --db .\wnba_raw.sqlite --incremental --since <timestamp-before-scraper-run>
+```
+
+If ESPN schedule says a game is completed but the raw schedule still marks it scheduled, direct PBP may still be available. In that case, scrape the game id directly in the raw checkout, then run the same incremental DB sync for the new raw/final JSON files.
 
 To strip an older copied database down to parsed data and reclaim disk space:
 

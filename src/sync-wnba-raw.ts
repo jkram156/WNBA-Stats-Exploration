@@ -9,6 +9,8 @@ type Options = {
   dbPath: string;
   prune: boolean;
   dryRun: boolean;
+  incremental: boolean;
+  sinceMtimeMs: number | null;
   storeSourceMetadata: boolean;
   storeRawContent: boolean;
   storeExtractedJson: boolean;
@@ -46,6 +48,8 @@ function parseArgs(argv: string[]): Options {
     dbPath: process.env.WNBA_RAW_DB ?? DEFAULT_DB_PATH,
     prune: false,
     dryRun: false,
+    incremental: false,
+    sinceMtimeMs: null,
     storeSourceMetadata: false,
     storeRawContent: false,
     storeExtractedJson: false,
@@ -65,6 +69,16 @@ function parseArgs(argv: string[]): Options {
       options.prune = true;
     } else if (arg === "--dry-run") {
       options.dryRun = true;
+    } else if (arg === "--incremental") {
+      options.incremental = true;
+    } else if (arg === "--since" && next) {
+      const parsed = Date.parse(next);
+      if (Number.isNaN(parsed)) {
+        throw new Error(`Invalid --since timestamp: ${next}`);
+      }
+      options.sinceMtimeMs = parsed;
+      options.incremental = true;
+      i += 1;
     } else if (arg === "--store-source-metadata") {
       options.storeSourceMetadata = true;
     } else if (arg === "--store-raw-content") {
@@ -93,6 +107,8 @@ Options:
   --db <path>      SQLite database path. Defaults to ${DEFAULT_DB_PATH}
   --prune          Delete database rows for source files that no longer exist.
   --dry-run        Scan and report changes without writing to SQLite.
+  --incremental    Upsert parsed rows for selected files instead of rebuilding all parsed tables.
+  --since <iso>    In incremental mode, only parse source files modified at or after this timestamp.
   --store-source-metadata
                   Store source file paths, hashes, sizes, and inferred metadata in raw_files.
   --store-raw-content
@@ -518,9 +534,27 @@ function refreshExtractedTables(db: Database.Database, files: SourceFile[], stor
       continue;
     }
 
+    extractSourceFile(statements, file, storeExtractedJson);
+  }
+}
+
+function refreshIncrementalExtractedTables(db: Database.Database, files: SourceFile[], storeExtractedJson: boolean): void {
+  const statements = buildExtractionStatements(db);
+
+  for (const file of files) {
+    if (file.extension !== "json") {
+      continue;
+    }
+
+    deleteExtractedRowsForFile(db, file);
+    extractSourceFile(statements, file, storeExtractedJson);
+  }
+}
+
+function extractSourceFile(statements: ExtractionStatements, file: SourceFile, storeExtractedJson: boolean): void {
     const contentText = readFileSync(file.absolutePath, "utf8");
     if (isValidJson(contentText) !== 1) {
-      continue;
+      return;
     }
 
     const loadedFile: LoadedSourceFile = {
@@ -540,7 +574,68 @@ function refreshExtractedTables(db: Database.Database, files: SourceFile[], stor
     extractTeamSeasonStats(statements, loadedFile, json);
     extractPlayerSeasonStats(statements, loadedFile, json);
     extractDraft(statements, loadedFile, json);
+}
+
+function deleteExtractedRowsForFile(db: Database.Database, file: SourceFile): void {
+  const sourceRelativePath = file.relativePath;
+  const entityId = file.inferredEntityId;
+
+  if (file.dataset === "json") {
+    db.prepare("DELETE FROM game_plays WHERE source_relative_path = ?").run(sourceRelativePath);
+
+    if (entityId && sourceRelativePath.includes("/final/")) {
+      deleteGameRows(db, entityId);
+    }
+    return;
   }
+
+  if (file.dataset === "officials") {
+    db.prepare("DELETE FROM game_officials WHERE source_relative_path = ?").run(sourceRelativePath);
+    if (entityId) {
+      db.prepare("DELETE FROM game_officials WHERE game_id = ?").run(entityId);
+    }
+    return;
+  }
+
+  if (file.dataset === "standings") {
+    db.prepare("DELETE FROM team_standings_stats WHERE source_relative_path = ?").run(sourceRelativePath);
+    return;
+  }
+
+  if (file.dataset === "team_rosters") {
+    db.prepare("DELETE FROM team_roster_members WHERE source_relative_path = ?").run(sourceRelativePath);
+    return;
+  }
+
+  if (file.dataset === "game_rosters") {
+    db.prepare("DELETE FROM game_roster_members WHERE source_relative_path = ?").run(sourceRelativePath);
+    if (entityId) {
+      db.prepare("DELETE FROM game_roster_members WHERE game_id = ?").run(entityId);
+    }
+    return;
+  }
+
+  if (file.dataset === "team_stats" && file.inferredYear && entityId) {
+    db.prepare("DELETE FROM team_season_stats WHERE requested_season = ? AND team_id = ?").run(file.inferredYear, entityId);
+    return;
+  }
+
+  if (file.dataset === "player_season_stats" && file.inferredYear && entityId) {
+    db.prepare("DELETE FROM player_season_stats WHERE requested_season = ? AND athlete_id = ?").run(file.inferredYear, entityId);
+    return;
+  }
+
+  if (file.dataset === "draft" && file.inferredYear) {
+    db.prepare("DELETE FROM draft_picks WHERE draft_year = ?").run(file.inferredYear);
+  }
+}
+
+function deleteGameRows(db: Database.Database, gameId: string): void {
+  db.prepare("DELETE FROM game_plays WHERE game_id = ?").run(gameId);
+  db.prepare("DELETE FROM game_player_box_stats WHERE game_id = ?").run(gameId);
+  db.prepare("DELETE FROM game_team_box_stats WHERE game_id = ?").run(gameId);
+  db.prepare("DELETE FROM game_competitors WHERE game_id = ?").run(gameId);
+  db.prepare("DELETE FROM games WHERE game_id = ?").run(gameId);
 }
 
 function buildExtractionStatements(db: Database.Database) {
@@ -1365,6 +1460,20 @@ function stringifyNullable(value: unknown): string | null {
   return value === undefined || value === null ? null : JSON.stringify(value);
 }
 
+function selectExtractionFiles(files: SourceFile[], options: Options): SourceFile[] {
+  if (!options.incremental && options.sinceMtimeMs === null) {
+    return files;
+  }
+
+  return files.filter((file) => {
+    if (options.sinceMtimeMs !== null && file.mtimeMs < options.sinceMtimeMs) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const startedAt = new Date().toISOString();
@@ -1372,10 +1481,14 @@ function main(): void {
   console.log(`Scanning ${options.sourceRoot}`);
   const files = discoverFiles(options.sourceRoot);
   console.log(`Found ${files.length.toLocaleString()} source files`);
+  const extractionFiles = selectExtractionFiles(files, options);
+  if (options.incremental) {
+    console.log(`Incremental parsed-table sync selected ${extractionFiles.length.toLocaleString()} source files`);
+  }
 
   if (options.dryRun) {
     const datasets = new Map<string, number>();
-    for (const file of files) {
+    for (const file of extractionFiles) {
       datasets.set(file.dataset, (datasets.get(file.dataset) ?? 0) + 1);
     }
 
@@ -1495,7 +1608,11 @@ function main(): void {
       }
     }
 
-    refreshExtractedTables(db, files, options.storeExtractedJson);
+    if (options.incremental) {
+      refreshIncrementalExtractedTables(db, extractionFiles, options.storeExtractedJson);
+    } else {
+      refreshExtractedTables(db, files, options.storeExtractedJson);
+    }
   });
 
   try {
@@ -1531,6 +1648,8 @@ function main(): void {
   console.log(`SQLite database: ${options.dbPath}`);
   if (options.storeSourceMetadata) {
     console.log(`Source metadata inserted ${inserted.toLocaleString()}, updated ${updated.toLocaleString()}, unchanged ${unchanged.toLocaleString()}, pruned ${pruned.toLocaleString()}`);
+  } else if (options.incremental) {
+    console.log("Source metadata skipped; parsed tables updated incrementally.");
   } else {
     console.log("Source metadata skipped; parsed tables refreshed only.");
   }
