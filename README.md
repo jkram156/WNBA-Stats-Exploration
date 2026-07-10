@@ -81,7 +81,7 @@ The outstanding-game step fetches PBP only for games that the refreshed raw sche
 
 ## Automatic Daily Refresh
 
-Windows Task Scheduler can run the full daily catch-up automatically. The job refreshes the current-season schedule index, fetches only outstanding completed games, updates the ESPN schedule, incrementally syncs the SQLite database, and writes a timestamped log under `logs`.
+Windows Task Scheduler can run the full daily catch-up automatically. The job refreshes the current-season schedule index, fetches only outstanding completed games, fills missing per-game rosters and officials, refreshes the current standings, team rosters, team season stats, and player season stats, updates the ESPN schedule, incrementally syncs the SQLite database, and writes a timestamped log under `logs`.
 
 Open PowerShell with **Run as administrator**, then register it for 6:00 AM local time:
 

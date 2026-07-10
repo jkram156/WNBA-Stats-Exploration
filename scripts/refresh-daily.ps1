@@ -71,6 +71,24 @@ try {
     Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
         "run", "--native-tls", "python", $outstandingGameScraper, "--raw-root", $RawRoot, "--season", "$Season"
     )
+    Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
+        "run", "--native-tls", "python", "python/scrape_wnba_game_rosters.py", "-s", "$Season", "-e", "$Season"
+    )
+    Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
+        "run", "--native-tls", "python", "python/scrape_wnba_officials.py", "-s", "$Season", "-e", "$Season"
+    )
+    Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
+        "run", "--native-tls", "python", "python/scrape_wnba_standings.py", "-s", "$Season", "-e", "$Season", "--force"
+    )
+    Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
+        "run", "--native-tls", "python", "python/scrape_wnba_team_rosters.py", "-s", "$Season", "-e", "$Season", "-r", "true"
+    )
+    Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
+        "run", "--native-tls", "python", "python/scrape_wnba_team_stats.py", "-s", "$Season", "-e", "$Season", "--force"
+    )
+    Invoke-CheckedCommand -Executable $uv -WorkingDirectory $RawRoot -Arguments @(
+        "run", "--native-tls", "python", "python/scrape_wnba_player_stats.py", "-s", "$Season", "-e", "$Season", "-r", "true"
+    )
     Invoke-CheckedCommand -Executable $tsx -WorkingDirectory $ProjectRoot -Arguments @(
         "src/sync-espn-schedule.ts", "--season", "$Season", "--db", $DatabasePath, "--insecure-tls"
     )
