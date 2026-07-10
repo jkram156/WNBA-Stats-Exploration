@@ -70,11 +70,35 @@ For a daily game catch-up, the usual order is:
 ```powershell
 cd C:\Users\jkram\github\wehoop-wnba-raw
 uv run --native-tls python python/scrape_wnba_schedules.py -s 2026 -e 2026
-uv run --native-tls python python/scrape_wnba_json.py -s 2026 -e 2026
 
 cd C:\Users\jkram\source\repos\WNBA-Stats-Exploration
+uv run --project C:\Users\jkram\github\wehoop-wnba-raw --native-tls python .\scripts\scrape-outstanding-games.py --raw-root C:\Users\jkram\github\wehoop-wnba-raw --season 2026
 pnpm run sync:espn-schedule -- --season 2026 --insecure-tls
 pnpm run sync:raw -- --source C:\Users\jkram\github\wehoop-wnba-raw --db .\wnba_raw.sqlite --incremental --since <timestamp-before-scraper-run>
+```
+
+The outstanding-game step fetches PBP only for games that the refreshed raw schedule marks completed and that do not already have a final JSON file. Add `--dry-run` to print that set without downloading anything. This avoids the raw scraper's `-r false` CLI trap: its current `type=bool` argument treats every non-empty string, including `"false"`, as true.
+
+## Automatic Daily Refresh
+
+Windows Task Scheduler can run the full daily catch-up automatically. The job refreshes the current-season schedule index, fetches only outstanding completed games, updates the ESPN schedule, incrementally syncs the SQLite database, and writes a timestamped log under `logs`.
+
+Open PowerShell with **Run as administrator**, then register it for 6:00 AM local time:
+
+```powershell
+.\scripts\register-daily-refresh.ps1
+```
+
+Choose another time with `-DailyAt HH:mm`:
+
+```powershell
+.\scripts\register-daily-refresh.ps1 -DailyAt 07:30
+```
+
+Re-running the registration command updates the existing task. The task runs with the current user's network access and therefore requires that user to be logged in. Missed runs start when Task Scheduler next gets an opportunity. To test the refresh directly before waiting for the scheduled run:
+
+```powershell
+.\scripts\refresh-daily.ps1
 ```
 
 If ESPN schedule says a game is completed but the raw schedule still marks it scheduled, direct PBP may still be available. In that case, scrape the game id directly in the raw checkout, then run the same incremental DB sync for the new raw/final JSON files.

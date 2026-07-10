@@ -11,3 +11,4 @@ storage/
 *.sqlite-wal
 reports/market-lines.json
 reports/pinnacle-debug.json
+logs/
