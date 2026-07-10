@@ -1,0 +1,1475 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WNBA Upcoming Game Predictions</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d252c;
+      --muted: #5a6670;
+      --line: #d9e0e5;
+      --panel: #f7f9fb;
+      --accent: #0b6b75;
+      --eli5: #284f9f;
+      --eli5-bg: #eef4ff;
+      --good: #0f7b4f;
+      --warn: #996b00;
+      --bad: #9d2f3d;
+      --wash: #eaf3f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      background: #ffffff;
+      line-height: 1.45;
+    }
+    header, main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    header { border-bottom: 1px solid var(--line); }
+    h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: 0; }
+    h2 { margin: 32px 0 12px; font-size: 20px; }
+    h3 { margin: 0 0 10px; font-size: 16px; }
+    p { margin: 6px 0; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel); color: #32414a; font-weight: 700; }
+    .cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .metric { font-size: 24px; font-weight: 700; color: var(--accent); }
+    .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .game { border: 1px solid var(--line); border-radius: 8px; margin: 18px 0; overflow: hidden; }
+    .game-head { display: grid; grid-template-columns: 1.4fr 0.9fr 1fr; gap: 16px; padding: 16px; background: var(--wash); }
+    .pick { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .solid { background: #dff2e8; color: var(--good); }
+    .lean { background: #fff1cf; color: var(--warn); }
+    .coin { background: #f2e4e8; color: var(--bad); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 16px; }
+    .subpanel { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+    .small { font-size: 12px; color: var(--muted); }
+    .right { text-align: right; }
+    .pos { color: var(--good); font-weight: 700; }
+    .neg { color: var(--bad); font-weight: 700; }
+    .note { background: #fff8e6; border-left: 4px solid #c28a00; padding: 10px 12px; margin: 16px 0; color: #4f3b00; }
+    .eli5-box {
+      background: var(--eli5-bg);
+      border: 1px solid #bfd2ff;
+      border-left: 5px solid var(--eli5);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin: 14px 0;
+      color: #203d7a;
+    }
+    .eli5-title {
+      display: block;
+      color: var(--eli5);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .eli5-inline {
+      display: inline-block;
+      background: var(--eli5-bg);
+      color: var(--eli5);
+      border: 1px solid #bfd2ff;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    @media (max-width: 820px) {
+      .cards, .game-head, .grid2 { grid-template-columns: 1fr; }
+      header, main { padding: 16px; }
+      table { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WNBA Upcoming Game Predictions</h1>
+    <p>Generated 2026-07-10T18:28:15.202Z from local SQLite data using the raw n=20 strength-core logistic model.</p>
+    <div class="cards">
+      <div class="card"><div class="label">Games Scored</div><div class="metric">12</div></div>
+      <div class="card"><div class="label">Solid Picks</div><div class="metric">5</div></div>
+      <div class="card"><div class="label">Lean Picks</div><div class="metric">6</div></div>
+      <div class="card"><div class="label">Coin Flips</div><div class="metric">1</div></div>
+      <div class="card"><div class="label">Market Lines</div><div class="metric">6</div></div>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h2>Model Context</h2>
+      <p>The baseline uses each team's prior 20 regular-season franchise games before tipoff. Features are recent points for, points against, scoring margin, and win percentage for the listed home team versus the away team.</p>
+      <p>Historical backtesting put this baseline at 0.6232 log loss versus 0.6931 for random 50/50, about a 10.1% relative improvement. Picks below 55% are marked as coin flips because prior diagnostics showed that low-confidence buckets are noisy.</p>
+      <p>When a market file is supplied, value side is calculated as model win probability minus the no-vig market-implied win probability. Listed spreads are market context only; this is not yet a spread-cover model.</p>
+      <div class="eli5-box"><span class="eli5-title">ELI5</span>Think of the model as a scorekeeper with a short memory. It looks at how each team has played recently, especially scoring margin and win rate, then converts that into a win chance. It does not know who is hurt or resting.</div>
+      <div class="note">This model does not train on injuries, player availability, betting markets, travel distance, or lineup strength. Optional market inputs are used only after prediction to compare model probability against market-implied probability. Expansion teams have shorter WNBA histories, so their rolling windows may contain fewer than 20 games.</div>
+    </section>
+
+    <section>
+      <h2>Prediction Board</h2>
+      <div class="eli5-box"><span class="eli5-title">ELI5</span>Read this table as: who the model leans toward, how strong the lean is, and whether the edge is worth trusting. A 51-54% pick is basically a shrug; 65%+ means the recent-team-strength numbers agree more loudly.</div>
+      <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Game</th>
+        <th>Favorite</th>
+        <th>Win %</th>
+        <th>Confidence</th>
+        <th>Value Side</th>
+        <th>Model Edge</th>
+        <th>Market Home %</th>
+        <th>Home Win %</th>
+        <th>Margin Edge</th>
+        <th>Win-Rate Edge</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+            <td>2026-07-10T23:30Z</td>
+            <td>GS @ CON</td>
+            <td><strong>GS</strong></td>
+            <td>74.8%</td>
+            <td><span class="badge solid">solid</span></td>
+            <td><strong>GS</strong></td>
+            <td class="pos">+5.1 pts</td>
+            <td>30.3%</td>
+            <td>CON 25.2%</td>
+            <td class="neg">-10.7</td>
+            <td class="neg">-45.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-10T23:30Z</td>
+            <td>DAL @ TOR</td>
+            <td><strong>DAL</strong></td>
+            <td>64.5%</td>
+            <td><span class="badge lean">lean</span></td>
+            <td><strong>TOR</strong></td>
+            <td class="pos">+8.9 pts</td>
+            <td>26.5%</td>
+            <td>TOR 35.5%</td>
+            <td class="neg">-6.0</td>
+            <td class="neg">-20.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-11T02:00Z</td>
+            <td>CHI @ LA</td>
+            <td><strong>LA</strong></td>
+            <td>55.2%</td>
+            <td><span class="badge lean">lean</span></td>
+            <td><strong>LA</strong></td>
+            <td class="pos">+1.9 pts</td>
+            <td>53.3%</td>
+            <td>LA 55.2%</td>
+            <td class="neg">-1.6</td>
+            <td class="pos">+15.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-11T17:00Z</td>
+            <td>NY @ MIN</td>
+            <td><strong>MIN</strong></td>
+            <td>61.3%</td>
+            <td><span class="badge lean">lean</span></td>
+            <td><strong>MIN</strong></td>
+            <td class="pos">+12.9 pts</td>
+            <td>48.4%</td>
+            <td>MIN 61.3%</td>
+            <td class="pos">+7.0</td>
+            <td class="pos">+15.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-11T20:00Z</td>
+            <td>POR @ ATL</td>
+            <td><strong>ATL</strong></td>
+            <td>69.4%</td>
+            <td><span class="badge solid">solid</span></td>
+            <td>n/a</td>
+            <td class="neg">n/a</td>
+            <td>n/a</td>
+            <td>ATL 69.4%</td>
+            <td class="pos">+11.2</td>
+            <td class="pos">+15.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-11T22:00Z</td>
+            <td>PHX @ LV</td>
+            <td><strong>LV</strong></td>
+            <td>67.3%</td>
+            <td><span class="badge solid">solid</span></td>
+            <td>n/a</td>
+            <td class="neg">n/a</td>
+            <td>n/a</td>
+            <td>LV 67.3%</td>
+            <td class="pos">+5.6</td>
+            <td class="pos">+35.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-12T19:00Z</td>
+            <td>NY @ TOR</td>
+            <td><strong>NY</strong></td>
+            <td>61.0%</td>
+            <td><span class="badge lean">lean</span></td>
+            <td><strong>NY</strong></td>
+            <td class="pos">+9.4 pts</td>
+            <td>48.4%</td>
+            <td>TOR 39.0%</td>
+            <td class="neg">-5.0</td>
+            <td class="neg">-15.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-12T19:00Z</td>
+            <td>SEA @ WSH</td>
+            <td><strong>WSH</strong></td>
+            <td>61.8%</td>
+            <td><span class="badge lean">lean</span></td>
+            <td>n/a</td>
+            <td class="neg">n/a</td>
+            <td>n/a</td>
+            <td>WSH 61.8%</td>
+            <td class="pos">+1.4</td>
+            <td class="pos">+25.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-12T23:00Z</td>
+            <td>CHI @ DAL</td>
+            <td><strong>DAL</strong></td>
+            <td>71.0%</td>
+            <td><span class="badge solid">solid</span></td>
+            <td><strong>DAL</strong></td>
+            <td class="pos">+19.4 pts</td>
+            <td>51.6%</td>
+            <td>DAL 71.0%</td>
+            <td class="pos">+7.6</td>
+            <td class="pos">+35.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-13T01:00Z</td>
+            <td>IND @ LV</td>
+            <td><strong>IND</strong></td>
+            <td>52.8%</td>
+            <td><span class="badge coin">coin flip</span></td>
+            <td>n/a</td>
+            <td class="neg">n/a</td>
+            <td>n/a</td>
+            <td>LV 47.2%</td>
+            <td class="neg">-1.2</td>
+            <td class="pos">+10.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-13T23:00Z</td>
+            <td>LA @ ATL</td>
+            <td><strong>ATL</strong></td>
+            <td>64.7%</td>
+            <td><span class="badge lean">lean</span></td>
+            <td>n/a</td>
+            <td class="neg">n/a</td>
+            <td>n/a</td>
+            <td>ATL 64.7%</td>
+            <td class="pos">+9.2</td>
+            <td class="pos">+10.0 pct pts</td>
+          </tr>
+<tr>
+            <td>2026-07-14T01:00Z</td>
+            <td>PHX @ MIN</td>
+            <td><strong>MIN</strong></td>
+            <td>77.4%</td>
+            <td><span class="badge solid">solid</span></td>
+            <td>n/a</td>
+            <td class="neg">n/a</td>
+            <td>n/a</td>
+            <td>MIN 77.4%</td>
+            <td class="pos">+13.1</td>
+            <td class="pos">+40.0 pct pts</td>
+          </tr>
+    </tbody>
+  </table>
+    </section>
+
+    <section>
+      <h2>Game Evidence</h2>
+      <article class="game">
+    <div class="game-head">
+      <div>
+        <h3>GS @ CON <span class="small">2026-07-10T23:30Z</span></h3>
+        <p>Mohegan Sun Arena - ION</p>
+        <p><span class="eli5-inline">One of the clearer model edges</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">GS 74.8%</div>
+        <span class="badge solid">solid</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">25.2%</div>
+        <p>CON home row vs GS away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>GS Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">14-6 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">70.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">82.0 / 76.8</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+5.2</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+7.6</td></tr>
+        <tr><td>Rest days</td><td class="right">2.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 83-75 away; 07-06 W 62-49 away; 07-04 W 88-83 away; 06-28 W 76-67 home; 06-27 W 78-75 home</p>
+  </div>
+      <div class="subpanel">
+    <h3>CON Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">5-15 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">25.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">80.1 / 85.6</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-5.5</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+6.4</td></tr>
+        <tr><td>Rest days</td><td class="right">2.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 L 80-86 home; 07-07 W 90-89 away; 07-03 L 83-86 home; 06-26 W 68-57 home; 06-22 W 92-63 home</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>GS is the pick because the model gives the away team side of this matchup 74.8%. This is one of the model&#39;s clearer picks on this slate. The home team has a -10.7 recent margin edge. Recent scoring volume is not a huge separator. The home team&#39;s defense has a -8.8 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right neg">-10.7</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right neg">-1.9</td></tr>
+            <tr><td>Home defense edge</td><td class="right neg">-8.8</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <h3>Market Comparison</h3>
+        <table>
+          <tbody>
+            <tr><td>Value side</td><td class="right pos">GS +5.1 pts</td></tr>
+            <tr><td>CON model vs market</td><td class="right neg">25.2% vs 30.3% (-5.1 pts)</td></tr>
+            <tr><td>GS model vs market</td><td class="right pos">74.8% vs 69.7% (+5.1 pts)</td></tr>
+            <tr><td>Moneyline</td><td class="right">GS -262 / CON +218</td></tr>
+            <tr><td>Spread</td><td class="right">GS -6.0 / CON +6.0</td></tr>
+            <tr><td>Book/source</td><td class="right">Pinnacle</td></tr>
+            <tr><td>Note</td><td class="right">SQLite market_line_sync_runs.id=5 finished 2026-07-10T18:27:20.034Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_winPct_avg <span class="small">value 0.25</span></td>
+    <td class="right pos">+0.028</td>
+  </tr><tr>
+    <td>home_scoreFor_avg <span class="small">value 80.10</span></td>
+    <td class="right pos">+0.026</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.70</span></td>
+    <td class="right neg">-0.272</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value -0.45</span></td>
+    <td class="right neg">-0.257</td>
+  </tr><tr>
+    <td>margin_diff <span class="small">value -10.65</span></td>
+    <td class="right neg">-0.197</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>DAL @ TOR <span class="small">2026-07-10T23:30Z</span></h3>
+        <p>Bell Centre - ION</p>
+        <p><span class="eli5-inline">Model leans this way</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">DAL 64.5%</div>
+        <span class="badge lean">lean</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">35.5%</div>
+        <p>TOR home row vs DAL away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>DAL Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">13-7 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">65.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">88.2 / 84.1</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+4.1</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+0.8</td></tr>
+        <tr><td>Rest days</td><td class="right">3.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 88-77 away; 07-05 W 89-76 away; 07-03 W 86-83 away; 06-28 L 77-85 home; 06-26 L 84-99 away</p>
+  </div>
+      <div class="subpanel">
+    <h3>TOR Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">9-11 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">45.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">90.5 / 92.5</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-1.9</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-1.8</td></tr>
+        <tr><td>Rest days</td><td class="right">2.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 L 75-83 home; 07-05 L 76-89 home; 06-27 L 80-89 home; 06-25 W 125-97 home; 06-22 L 87-94 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>DAL is the pick because the model gives the away team side of this matchup 64.5%. This is a real lean, but not a slam-dunk pick. The home team has a -6.0 recent margin edge. Recent scoring volume is not a huge separator. The home team&#39;s defense has a -8.4 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right neg">-6.0</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+2.3</td></tr>
+            <tr><td>Home defense edge</td><td class="right neg">-8.4</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <h3>Market Comparison</h3>
+        <table>
+          <tbody>
+            <tr><td>Value side</td><td class="right pos">TOR +8.9 pts</td></tr>
+            <tr><td>TOR model vs market</td><td class="right pos">35.5% vs 26.5% (+8.9 pts)</td></tr>
+            <tr><td>DAL model vs market</td><td class="right neg">64.5% vs 73.5% (-8.9 pts)</td></tr>
+            <tr><td>Moneyline</td><td class="right">DAL -323 / TOR +263</td></tr>
+            <tr><td>Spread</td><td class="right">DAL -7.5 / TOR +7.5</td></tr>
+            <tr><td>Book/source</td><td class="right">Pinnacle</td></tr>
+            <tr><td>Note</td><td class="right">SQLite market_line_sync_runs.id=5 finished 2026-07-10T18:27:20.034Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_scoreFor_avg <span class="small">value 90.55</span></td>
+    <td class="right pos">+0.121</td>
+  </tr><tr>
+    <td>scoreFor_diff <span class="small">value 2.35</span></td>
+    <td class="right pos">+0.036</td>
+  </tr><tr>
+    <td>away_scoreAgainst_avg <span class="small">value 84.10</span></td>
+    <td class="right pos">+0.017</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.65</span></td>
+    <td class="right neg">-0.205</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value -0.20</span></td>
+    <td class="right neg">-0.115</td>
+  </tr><tr>
+    <td>margin_diff <span class="small">value -6.05</span></td>
+    <td class="right neg">-0.112</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>CHI @ LA <span class="small">2026-07-11T02:00Z</span></h3>
+        <p>crypto.com Arena - ION</p>
+        <p><span class="eli5-inline">Model leans this way</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">LA 55.2%</div>
+        <span class="badge lean">lean</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">55.2%</div>
+        <p>LA home row vs CHI away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>CHI Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">6-14 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">30.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">85.5 / 89.1</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-3.5</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+9.6</td></tr>
+        <tr><td>Rest days</td><td class="right">3.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 77-66 away; 07-04 L 90-98 away; 06-28 L 99-107 home; 06-26 W 124-94 home; 06-25 W 101-78 home</p>
+  </div>
+      <div class="subpanel">
+    <h3>LA Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">9-11 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">45.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">88.4 / 93.5</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-5.2</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-11.0</td></tr>
+        <tr><td>Rest days</td><td class="right">2.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-09 W 106-92 home; 07-07 L 64-82 home; 06-28 L 87-111 away; 06-25 L 97-125 away; 06-22 W 98-97 home</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>LA is the pick because the model gives the home team side of this matchup 55.2%. This is a real lean, but not a slam-dunk pick. Recent margin is fairly close. Recent scoring volume is not a huge separator. The home team&#39;s defense has a -4.5 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right neg">-1.6</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+2.9</td></tr>
+            <tr><td>Home defense edge</td><td class="right neg">-4.5</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <h3>Market Comparison</h3>
+        <table>
+          <tbody>
+            <tr><td>Value side</td><td class="right pos">LA +1.9 pts</td></tr>
+            <tr><td>LA model vs market</td><td class="right pos">55.2% vs 53.3% (+1.9 pts)</td></tr>
+            <tr><td>CHI model vs market</td><td class="right neg">44.8% vs 46.7% (-1.9 pts)</td></tr>
+            <tr><td>Moneyline</td><td class="right">CHI +106 / LA -124</td></tr>
+            <tr><td>Spread</td><td class="right">CHI +1.0 / LA -1.0</td></tr>
+            <tr><td>Book/source</td><td class="right">Pinnacle</td></tr>
+            <tr><td>Note</td><td class="right">SQLite market_line_sync_runs.id=5 finished 2026-07-10T18:27:20.034Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.30</span></td>
+    <td class="right pos">+0.269</td>
+  </tr><tr>
+    <td>home_scoreFor_avg <span class="small">value 88.40</span></td>
+    <td class="right pos">+0.101</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value 0.15</span></td>
+    <td class="right pos">+0.086</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_margin_avg <span class="small">value -5.15</span></td>
+    <td class="right neg">-0.142</td>
+  </tr><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 93.55</span></td>
+    <td class="right neg">-0.112</td>
+  </tr><tr>
+    <td>scoreAgainst_diff <span class="small">value 4.45</span></td>
+    <td class="right neg">-0.050</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>NY @ MIN <span class="small">2026-07-11T17:00Z</span></h3>
+        <p>Target Center - ABC</p>
+        <p><span class="eli5-inline">Model leans this way</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">MIN 61.3%</div>
+        <span class="badge lean">lean</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">61.3%</div>
+        <p>MIN home row vs NY away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>NY Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">12-8 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">60.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">86.3 / 83.2</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+3.1</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-2.0</td></tr>
+        <tr><td>Rest days</td><td class="right">3.7</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 L 77-88 home; 07-03 W 99-86 home; 06-30 W 93-85 home; 06-28 L 67-76 away; 06-26 L 88-99 away</p>
+  </div>
+      <div class="subpanel">
+    <h3>MIN Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">15-5 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">75.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">90.1 / 80.0</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+10.1</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+0.4</td></tr>
+        <tr><td>Rest days</td><td class="right">2.7</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 86-80 away; 07-07 L 89-90 home; 07-03 L 86-99 away; 06-28 W 85-77 away; 06-24 W 78-76 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>MIN is the pick because the model gives the home team side of this matchup 61.3%. This is a real lean, but not a slam-dunk pick. The home team has a +7.0 recent margin edge. The home team scores +3.8 more points per game in this window. The home team&#39;s defense has a +3.1 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+7.0</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+3.8</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+3.1</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <h3>Market Comparison</h3>
+        <table>
+          <tbody>
+            <tr><td>Value side</td><td class="right pos">MIN +12.9 pts</td></tr>
+            <tr><td>MIN model vs market</td><td class="right pos">61.3% vs 48.4% (+12.9 pts)</td></tr>
+            <tr><td>NY model vs market</td><td class="right neg">38.7% vs 51.6% (-12.9 pts)</td></tr>
+            <tr><td>Moneyline</td><td class="right">NY -115 / MIN -101</td></tr>
+            <tr><td>Spread</td><td class="right">NY n/a / MIN n/a</td></tr>
+            <tr><td>Book/source</td><td class="right">Pinnacle</td></tr>
+            <tr><td>Note</td><td class="right">SQLite market_line_sync_runs.id=5 finished 2026-07-10T18:27:20.034Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_margin_avg <span class="small">value 10.05</span></td>
+    <td class="right pos">+0.279</td>
+  </tr><tr>
+    <td>margin_diff <span class="small">value 6.95</span></td>
+    <td class="right pos">+0.128</td>
+  </tr><tr>
+    <td>home_scoreFor_avg <span class="small">value 90.10</span></td>
+    <td class="right pos">+0.117</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.60</span></td>
+    <td class="right neg">-0.137</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 86.25</span></td>
+    <td class="right neg">-0.039</td>
+  </tr><tr>
+    <td>away_margin_avg <span class="small">value 3.10</span></td>
+    <td class="right neg">-0.037</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>POR @ ATL <span class="small">2026-07-11T20:00Z</span></h3>
+        <p>Gateway Center - CBS/Paramount+</p>
+        <p><span class="eli5-inline">One of the clearer model edges</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">ATL 69.4%</div>
+        <span class="badge solid">solid</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">69.4%</div>
+        <p>ATL home row vs POR away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>POR Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">8-12 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">40.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">83.5 / 90.6</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-7.2</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-11.4</td></tr>
+        <tr><td>Rest days</td><td class="right">1.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 L 80-88 home; 07-05 W 77-72 away; 06-28 L 123-124 away; 06-26 L 94-124 away; 06-25 L 78-101 away</p>
+  </div>
+      <div class="subpanel">
+    <h3>ATL Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">11-9 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">55.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">87.9 / 83.9</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+4.0</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-3.4</td></tr>
+        <tr><td>Rest days</td><td class="right">1.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 W 89-78 home; 07-04 L 83-88 home; 07-02 L 76-81 away; 06-28 L 90-105 away; 06-27 L 75-78 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>ATL is the pick because the model gives the home team side of this matchup 69.4%. This is one of the model&#39;s clearer picks on this slate. The home team has a +11.2 recent margin edge. The home team scores +4.5 more points per game in this window. The home team&#39;s defense has a +6.7 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+11.2</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+4.5</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+6.7</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <p class="small">No market line supplied for this game.</p>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>margin_diff <span class="small">value 11.15</span></td>
+    <td class="right pos">+0.206</td>
+  </tr><tr>
+    <td>away_winPct_avg <span class="small">value 0.40</span></td>
+    <td class="right pos">+0.134</td>
+  </tr><tr>
+    <td>home_margin_avg <span class="small">value 4.00</span></td>
+    <td class="right pos">+0.111</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 83.90</span></td>
+    <td class="right neg">-0.045</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 83.45</span></td>
+    <td class="right neg">-0.027</td>
+  </tr><tr>
+    <td>home_winPct_avg <span class="small">value 0.55</span></td>
+    <td class="right neg">-0.006</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>PHX @ LV <span class="small">2026-07-11T22:00Z</span></h3>
+        <p>Michelob ULTRA Arena - Peacock/NBCSN</p>
+        <p><span class="eli5-inline">One of the clearer model edges</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">LV 67.3%</div>
+        <span class="badge solid">solid</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">67.3%</div>
+        <p>LV home row vs PHX away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>PHX Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">7-13 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">35.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">83.1 / 86.2</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-3.0</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+4.0</td></tr>
+        <tr><td>Rest days</td><td class="right">1.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 L 89-92 home; 07-08 L 66-77 home; 07-03 W 90-67 home; 06-27 W 89-80 away; 06-24 W 111-109 away</p>
+  </div>
+      <div class="subpanel">
+    <h3>LV Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">14-6 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">70.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">89.7 / 87.1</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+2.5</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+0.0</td></tr>
+        <tr><td>Rest days</td><td class="right">1.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 W 88-80 away; 07-05 L 68-84 home; 07-04 W 98-90 home; 06-30 L 85-93 away; 06-28 W 107-99 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>LV is the pick because the model gives the home team side of this matchup 67.3%. This is one of the model&#39;s clearer picks on this slate. The home team has a +5.6 recent margin edge. The home team scores +6.6 more points per game in this window. Recent defense is not a huge separator.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+5.6</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+6.6</td></tr>
+            <tr><td>Home defense edge</td><td class="right neg">-0.9</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <p class="small">No market line supplied for this game.</p>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.35</span></td>
+    <td class="right pos">+0.202</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value 0.35</span></td>
+    <td class="right pos">+0.200</td>
+  </tr><tr>
+    <td>home_scoreFor_avg <span class="small">value 89.65</span></td>
+    <td class="right pos">+0.113</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 87.10</span></td>
+    <td class="right neg">-0.067</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 83.10</span></td>
+    <td class="right neg">-0.025</td>
+  </tr><tr>
+    <td>home_winPct_avg <span class="small">value 0.70</span></td>
+    <td class="right neg">-0.022</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>NY @ TOR <span class="small">2026-07-12T19:00Z</span></h3>
+        <p>Bell Centre - NBA TV</p>
+        <p><span class="eli5-inline">Model leans this way</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">NY 61.0%</div>
+        <span class="badge lean">lean</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">39.0%</div>
+        <p>TOR home row vs NY away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>NY Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">12-8 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">60.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">86.3 / 83.2</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+3.1</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-2.0</td></tr>
+        <tr><td>Rest days</td><td class="right">4.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 L 77-88 home; 07-03 W 99-86 home; 06-30 W 93-85 home; 06-28 L 67-76 away; 06-26 L 88-99 away</p>
+  </div>
+      <div class="subpanel">
+    <h3>TOR Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">9-11 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">45.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">90.5 / 92.5</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-1.9</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-1.8</td></tr>
+        <tr><td>Rest days</td><td class="right">3.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 L 75-83 home; 07-05 L 76-89 home; 06-27 L 80-89 home; 06-25 W 125-97 home; 06-22 L 87-94 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>NY is the pick because the model gives the away team side of this matchup 61.0%. This is a real lean, but not a slam-dunk pick. The home team has a -5.0 recent margin edge. The home team scores +4.3 more points per game in this window. The home team&#39;s defense has a -9.3 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right neg">-5.0</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+4.3</td></tr>
+            <tr><td>Home defense edge</td><td class="right neg">-9.3</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <h3>Market Comparison</h3>
+        <table>
+          <tbody>
+            <tr><td>Value side</td><td class="right pos">NY +9.4 pts</td></tr>
+            <tr><td>TOR model vs market</td><td class="right neg">39.0% vs 48.4% (-9.4 pts)</td></tr>
+            <tr><td>NY model vs market</td><td class="right pos">61.0% vs 51.6% (+9.4 pts)</td></tr>
+            <tr><td>Moneyline</td><td class="right">NY -115 / TOR -101</td></tr>
+            <tr><td>Spread</td><td class="right">NY n/a / TOR n/a</td></tr>
+            <tr><td>Book/source</td><td class="right">Pinnacle</td></tr>
+            <tr><td>Note</td><td class="right">SQLite market_line_sync_runs.id=5 finished 2026-07-10T18:27:20.034Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_scoreFor_avg <span class="small">value 90.55</span></td>
+    <td class="right pos">+0.121</td>
+  </tr><tr>
+    <td>scoreFor_diff <span class="small">value 4.30</span></td>
+    <td class="right pos">+0.065</td>
+  </tr><tr>
+    <td>away_scoreAgainst_avg <span class="small">value 83.15</span></td>
+    <td class="right pos">+0.015</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.60</span></td>
+    <td class="right neg">-0.137</td>
+  </tr><tr>
+    <td>scoreAgainst_diff <span class="small">value 9.35</span></td>
+    <td class="right neg">-0.106</td>
+  </tr><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 92.50</span></td>
+    <td class="right neg">-0.104</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>SEA @ WSH <span class="small">2026-07-12T19:00Z</span></h3>
+        <p>CareFirst Arena - WNBA League Pass/KOMO-TV/Prime Video-Seattle/MNMT</p>
+        <p><span class="eli5-inline">Model leans this way</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">WSH 61.8%</div>
+        <span class="badge lean">lean</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">61.8%</div>
+        <p>WSH home row vs SEA away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>SEA Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">5-15 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">25.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">80.0 / 84.8</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-4.8</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-1.2</td></tr>
+        <tr><td>Rest days</td><td class="right">2.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 L 78-89 away; 07-07 W 82-64 away; 07-05 L 72-77 home; 07-03 L 67-90 away; 06-28 W 105-90 home</p>
+  </div>
+      <div class="subpanel">
+    <h3>WSH Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">10-10 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">50.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">81.1 / 84.5</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-3.4</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-4.0</td></tr>
+        <tr><td>Rest days</td><td class="right">5.8</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-06 L 49-62 home; 07-02 W 81-76 home; 06-28 W 124-123 home; 06-26 L 57-68 away; 06-24 L 76-78 home</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>WSH is the pick because the model gives the home team side of this matchup 61.8%. This is a real lean, but not a slam-dunk pick. Recent margin is fairly close. Recent scoring volume is not a huge separator. Recent defense is not a huge separator.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+1.4</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+1.0</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+0.3</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <p class="small">No market line supplied for this game.</p>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.25</span></td>
+    <td class="right pos">+0.337</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value 0.25</span></td>
+    <td class="right pos">+0.143</td>
+  </tr><tr>
+    <td>away_margin_avg <span class="small">value -4.75</span></td>
+    <td class="right pos">+0.056</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_margin_avg <span class="small">value -3.40</span></td>
+    <td class="right neg">-0.094</td>
+  </tr><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 84.50</span></td>
+    <td class="right neg">-0.049</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 80.05</span></td>
+    <td class="right neg">-0.012</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>CHI @ DAL <span class="small">2026-07-12T23:00Z</span></h3>
+        <p>American Airlines Center - ESPN/Disney+</p>
+        <p><span class="eli5-inline">One of the clearer model edges</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">DAL 71.0%</div>
+        <span class="badge solid">solid</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">71.0%</div>
+        <p>DAL home row vs CHI away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>CHI Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">6-14 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">30.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">85.5 / 89.1</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-3.5</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+9.6</td></tr>
+        <tr><td>Rest days</td><td class="right">4.9</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 77-66 away; 07-04 L 90-98 away; 06-28 L 99-107 home; 06-26 W 124-94 home; 06-25 W 101-78 home</p>
+  </div>
+      <div class="subpanel">
+    <h3>DAL Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">13-7 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">65.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">88.2 / 84.1</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+4.1</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+0.8</td></tr>
+        <tr><td>Rest days</td><td class="right">5.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 88-77 away; 07-05 W 89-76 away; 07-03 W 86-83 away; 06-28 L 77-85 home; 06-26 L 84-99 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>DAL is the pick because the model gives the home team side of this matchup 71.0%. This is one of the model&#39;s clearer picks on this slate. The home team has a +7.6 recent margin edge. Recent scoring volume is not a huge separator. The home team&#39;s defense has a +5.0 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+7.6</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+2.7</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+5.0</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <h3>Market Comparison</h3>
+        <table>
+          <tbody>
+            <tr><td>Value side</td><td class="right pos">DAL +19.4 pts</td></tr>
+            <tr><td>DAL model vs market</td><td class="right pos">71.0% vs 51.6% (+19.4 pts)</td></tr>
+            <tr><td>CHI model vs market</td><td class="right neg">29.0% vs 48.4% (-19.4 pts)</td></tr>
+            <tr><td>Moneyline</td><td class="right">CHI -101 / DAL -115</td></tr>
+            <tr><td>Spread</td><td class="right">CHI +1.0 / DAL -1.0</td></tr>
+            <tr><td>Book/source</td><td class="right">Pinnacle</td></tr>
+            <tr><td>Note</td><td class="right">SQLite market_line_sync_runs.id=5 finished 2026-07-10T18:27:20.034Z</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.30</span></td>
+    <td class="right pos">+0.269</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value 0.35</span></td>
+    <td class="right pos">+0.200</td>
+  </tr><tr>
+    <td>margin_diff <span class="small">value 7.65</span></td>
+    <td class="right pos">+0.141</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 84.10</span></td>
+    <td class="right neg">-0.047</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 85.55</span></td>
+    <td class="right neg">-0.036</td>
+  </tr><tr>
+    <td>home_winPct_avg <span class="small">value 0.65</span></td>
+    <td class="right neg">-0.017</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>IND @ LV <span class="small">2026-07-13T01:00Z</span></h3>
+        <p>Michelob ULTRA Arena - NBC/Peacock</p>
+        <p><span class="eli5-inline">Treat as a toss-up</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">IND 52.8%</div>
+        <span class="badge coin">coin flip</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">47.2%</div>
+        <p>LV home row vs IND away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>IND Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">12-8 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">60.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">93.1 / 89.4</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+3.7</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+5.4</td></tr>
+        <tr><td>Rest days</td><td class="right">3.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 W 92-89 away; 07-09 L 92-106 away; 07-05 W 84-68 away; 06-28 W 111-87 home; 06-24 L 109-111 home</p>
+  </div>
+      <div class="subpanel">
+    <h3>LV Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">14-6 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">70.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">89.7 / 87.1</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+2.5</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+0.0</td></tr>
+        <tr><td>Rest days</td><td class="right">3.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 W 88-80 away; 07-05 L 68-84 home; 07-04 W 98-90 home; 06-30 L 85-93 away; 06-28 W 107-99 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>IND is the pick because the model gives the away team side of this matchup 52.8%. This is close enough that the model is not saying much more than &#39;maybe.&#39; Recent margin is fairly close. The home team scores -3.4 more points per game in this window. Recent defense is not a huge separator.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right neg">-1.2</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right neg">-3.4</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+2.3</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <p class="small">No market line supplied for this game.</p>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_scoreFor_avg <span class="small">value 89.65</span></td>
+    <td class="right pos">+0.113</td>
+  </tr><tr>
+    <td>home_margin_avg <span class="small">value 2.55</span></td>
+    <td class="right pos">+0.071</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value 0.10</span></td>
+    <td class="right pos">+0.057</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_winPct_avg <span class="small">value 0.60</span></td>
+    <td class="right neg">-0.137</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 93.10</span></td>
+    <td class="right neg">-0.068</td>
+  </tr><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 87.10</span></td>
+    <td class="right neg">-0.067</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>LA @ ATL <span class="small">2026-07-13T23:00Z</span></h3>
+        <p>Gateway Center - USA Net</p>
+        <p><span class="eli5-inline">Model leans this way</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">ATL 64.7%</div>
+        <span class="badge lean">lean</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">64.7%</div>
+        <p>ATL home row vs LA away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>LA Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">9-11 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">45.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">88.4 / 93.5</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-5.2</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-11.0</td></tr>
+        <tr><td>Rest days</td><td class="right">4.9</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-09 W 106-92 home; 07-07 L 64-82 home; 06-28 L 87-111 away; 06-25 L 97-125 away; 06-22 W 98-97 home</p>
+  </div>
+      <div class="subpanel">
+    <h3>ATL Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">11-9 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">55.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">87.9 / 83.9</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+4.0</td></tr>
+        <tr><td>Last 5 margin</td><td class="right neg">-3.4</td></tr>
+        <tr><td>Rest days</td><td class="right">4.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 W 89-78 home; 07-04 L 83-88 home; 07-02 L 76-81 away; 06-28 L 90-105 away; 06-27 L 75-78 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>ATL is the pick because the model gives the home team side of this matchup 64.7%. This is a real lean, but not a slam-dunk pick. The home team has a +9.2 recent margin edge. Recent scoring volume is not a huge separator. The home team&#39;s defense has a +9.6 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+9.2</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right neg">-0.5</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+9.6</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <p class="small">No market line supplied for this game.</p>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>margin_diff <span class="small">value 9.15</span></td>
+    <td class="right pos">+0.169</td>
+  </tr><tr>
+    <td>home_margin_avg <span class="small">value 4.00</span></td>
+    <td class="right pos">+0.111</td>
+  </tr><tr>
+    <td>scoreAgainst_diff <span class="small">value -9.65</span></td>
+    <td class="right pos">+0.109</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>away_scoreFor_avg <span class="small">value 88.40</span></td>
+    <td class="right neg">-0.048</td>
+  </tr><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 83.90</span></td>
+    <td class="right neg">-0.045</td>
+  </tr><tr>
+    <td>scoreFor_diff <span class="small">value -0.50</span></td>
+    <td class="right neg">-0.008</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+<article class="game">
+    <div class="game-head">
+      <div>
+        <h3>PHX @ MIN <span class="small">2026-07-14T01:00Z</span></h3>
+        <p>Target Center - Peacock/NBCSN</p>
+        <p><span class="eli5-inline">One of the clearer model edges</span></p>
+      </div>
+      <div>
+        <div class="label">Pick</div>
+        <div class="pick">MIN 77.4%</div>
+        <span class="badge solid">solid</span>
+      </div>
+      <div>
+        <div class="label">Home Win Probability</div>
+        <div class="metric">77.4%</div>
+        <p>MIN home row vs PHX away row</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="subpanel">
+    <h3>PHX Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">7-13 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">35.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">83.1 / 86.2</td></tr>
+        <tr><td>Avg margin</td><td class="right neg">-3.0</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+4.0</td></tr>
+        <tr><td>Rest days</td><td class="right">4.0</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-10 L 89-92 home; 07-08 L 66-77 home; 07-03 W 90-67 home; 06-27 W 89-80 away; 06-24 W 111-109 away</p>
+  </div>
+      <div class="subpanel">
+    <h3>MIN Rolling Form</h3>
+    <table>
+      <tbody>
+        <tr><td>Window record</td><td class="right">15-5 in 20 games</td></tr>
+        <tr><td>Win percentage</td><td class="right">75.0%</td></tr>
+        <tr><td>Points for / against</td><td class="right">90.1 / 80.0</td></tr>
+        <tr><td>Avg margin</td><td class="right pos">+10.1</td></tr>
+        <tr><td>Last 5 margin</td><td class="right pos">+0.4</td></tr>
+        <tr><td>Rest days</td><td class="right">5.1</td></tr>
+      </tbody>
+    </table>
+    <p class="small">Recent games: 07-08 W 86-80 away; 07-07 L 89-90 home; 07-03 L 86-99 away; 06-28 W 85-77 away; 06-24 W 78-76 away</p>
+  </div>
+    </div>
+    <div class="eli5-box"><span class="eli5-title">ELI5</span>MIN is the pick because the model gives the home team side of this matchup 77.4%. This is one of the model&#39;s clearer picks on this slate. The home team has a +13.1 recent margin edge. The home team scores +7.0 more points per game in this window. The home team&#39;s defense has a +6.1 points-allowed edge.</div>
+    <div class="grid2">
+      <div class="subpanel">
+        <h3>Key Edges</h3>
+        <table>
+          <tbody>
+            <tr><td>Home rolling margin edge</td><td class="right pos">+13.1</td></tr>
+            <tr><td>Home rolling scoring edge</td><td class="right pos">+7.0</td></tr>
+            <tr><td>Home defense edge</td><td class="right pos">+6.1</td></tr>
+            <tr><td>Training team-game rows</td><td class="right">10,655</td></tr>
+          </tbody>
+        </table>
+        <p class="small">No market line supplied for this game.</p>
+      </div>
+      <div class="subpanel">
+        <h3>Largest Model Drivers</h3>
+        <table>
+          <thead><tr><th>Favors Home</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_margin_avg <span class="small">value 10.05</span></td>
+    <td class="right pos">+0.279</td>
+  </tr><tr>
+    <td>margin_diff <span class="small">value 13.10</span></td>
+    <td class="right pos">+0.242</td>
+  </tr><tr>
+    <td>winPct_diff <span class="small">value 0.40</span></td>
+    <td class="right pos">+0.228</td>
+  </tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Favors Away</th><th class="right">Contribution</th></tr></thead>
+          <tbody><tr>
+    <td>home_winPct_avg <span class="small">value 0.75</span></td>
+    <td class="right neg">-0.028</td>
+  </tr><tr>
+    <td>away_scoreFor_avg <span class="small">value 83.10</span></td>
+    <td class="right neg">-0.025</td>
+  </tr><tr>
+    <td>home_scoreAgainst_avg <span class="small">value 80.05</span></td>
+    <td class="right neg">-0.019</td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+    </section>
+  </main>
+</body>
+</html>
